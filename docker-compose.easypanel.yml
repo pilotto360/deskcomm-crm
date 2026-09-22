@@ -5,7 +5,7 @@ services:
     restart: unless-stopped
     mem_limit: 768m
     ports:
-      - "3000:3000"
+      - "3300:3000"
 
     environment:
       # ─────────────────────────────────────────────
