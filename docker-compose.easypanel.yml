@@ -4,6 +4,12 @@ services:
     pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     mem_limit: 768m
+    networks:
+      default:
+      easypanel:
+        aliases:
+          - chat_crm_app
+          - app
 
     environment:
       # ─────────────────────────────────────────────
@@ -243,3 +249,8 @@ services:
 volumes:
   waha-data:
   waha-media:
+
+networks:
+  default:
+  easypanel:
+    external: true
