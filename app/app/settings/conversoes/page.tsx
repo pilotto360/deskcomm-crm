@@ -40,28 +40,59 @@ import {
   MOTIVO_LEGIVEL,
 } from "@/lib/conversoes/estado-da-conexao";
 import { traduzir } from "@/lib/i18n/dicionario";
-import { montarCodigoDeOrigemDoSite, TAMANHO_MAXIMO_DO_CODIGO } from "@/lib/leads/origem-do-site";
+import {
+  CHAVES_DE_UTM,
+  montarCodigoDeOrigemDoSite,
+  TAMANHO_MAXIMO_DO_CODIGO,
+} from "@/lib/leads/origem-do-site";
 import { formatCentsBRL } from "@/lib/money";
+import {
+  faltaParaConectarOGoogleAds,
+  googleAdsEstaConfigurado,
+} from "@/lib/plataformas-de-anuncio/google/config";
+import { lerEstadoDaConexaoGoogle } from "@/lib/plataformas-de-anuncio/google/estado-da-conexao";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import { FormularioDeConversoes } from "./_form";
+import { FormularioDeConversoesGoogle } from "./_formGoogle";
 
 export const metadata = { title: "Conversões" };
 export const dynamic = "force-dynamic";
 
-export default async function ConversoesPage() {
+/** O que a volta do OAuth do Google Ads diz, traduzido — ver o callback. */
+const ERRO_DO_GOOGLE_EM_PORTUGUES: Record<string, string> = {
+  cancelado: "Você cancelou a autorização no Google. Nada foi conectado.",
+  estado_invalido: "O link de conexão expirou ou é inválido. Clique em \"Conectar com Google\" de novo.",
+  sem_codigo: "O Google não devolveu o código esperado. Tente de novo.",
+  google_ads_nao_configurado:
+    "Esta instalação ainda não tem as credenciais do Google Ads configuradas. Fale com quem administra o servidor.",
+  troca_falhou: "Não consegui trocar o código pelo token de acesso. Tente conectar de novo.",
+  sem_refresh_token:
+    "O Google não devolveu a autorização de longa duração esperada. Tente conectar de novo.",
+  cifra_indisponivel:
+    "Esta instalação está sem a chave mestra de criptografia, e o token não foi gravado. Quem instalou o sistema precisa configurá-la.",
+  erro_ao_gravar: "Não consegui gravar a conexão agora. Tente de novo em instantes.",
+};
+
+export default async function ConversoesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ erro?: string; ok?: string }>;
+}) {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
   if (!(user.is_platform_admin && !user.support) && ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
     redirect("/403");
   }
+  const { erro: erroDoGoogle, ok: okDoGoogle } = await searchParams;
 
   const admin = createAdminClient();
-  const [estado, pendencias, enviadas] = await Promise.all([
+  const [estado, pendencias, enviadas, estadoGoogle] = await Promise.all([
     lerEstadoDaConexao(admin, activeOrg.orgId),
     lerPendencias(admin, activeOrg.orgId),
     contaEnviadas(admin, activeOrg.orgId),
+    lerEstadoDaConexaoGoogle(admin, activeOrg.orgId),
   ]);
   const idioma = user.idioma;
   const t = (texto: string) => traduzir(texto, idioma);
@@ -91,6 +122,17 @@ export default async function ConversoesPage() {
         </p>
       </header>
 
+      {erroDoGoogle && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm">
+          {t(ERRO_DO_GOOGLE_EM_PORTUGUES[erroDoGoogle] ?? "Não consegui conectar com o Google Ads.")}
+        </div>
+      )}
+      {okDoGoogle && (
+        <div className="rounded-md border border-emerald-500/40 bg-emerald-500/10 p-4 text-sm">
+          {t("Google Ads autorizado. Agora informe a conta e a ação de conversão abaixo.")}
+        </div>
+      )}
+
       {estado.conectada && !estado.habilitada && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 text-sm">
           {t("O envio está pausado. As vendas continuam sendo registradas aqui, mas não vão para a plataforma enquanto isto estiver desligado.")}
@@ -104,6 +146,12 @@ export default async function ConversoesPage() {
       )}
 
       <FormularioDeConversoes estado={estado} idioma={idioma} />
+      <FormularioDeConversoesGoogle
+        estado={estadoGoogle}
+        idioma={idioma}
+        configurado={googleAdsEstaConfigurado()}
+        falta={faltaParaConectarOGoogleAds()}
+      />
 
       <section className="flex flex-col gap-3">
         <div className="flex items-baseline justify-between">
@@ -197,10 +245,19 @@ export default async function ConversoesPage() {
           <code className="mt-3 block overflow-x-auto rounded-md bg-muted/50 p-2 text-xs break-all">
             {linkDeExemplo}
           </code>
+          {/*
+            A LISTA DE CHAVES VEM DO MÓDULO, e não da frase — mesma razão que o
+            exemplo logo acima é gerado e não escrito à mão. Enquanto os nomes
+            moravam dentro do texto traduzido, acrescentar uma chave exigia
+            lembrar de dois arquivos, e esquecer o segundo deixava a tela
+            ensinando uma lista incompleta em português e em espanhol.
+
+            O nome entra FORA do `t()` de propósito: `traduzir()` casa a string
+            EXATA, e um template literal não casaria chave nenhuma.
+          */}
           <p className="mt-3 text-xs text-muted-foreground">
-            {t(
-              "Este exemplo foi gerado por esta tela. Os campos que o código aceita são utm_source, utm_medium, utm_campaign, utm_term, utm_content, gclid e fbclid.",
-            )}
+            {t("Este exemplo foi gerado por esta tela. Os campos que o código aceita são:")}{" "}
+            {CHAVES_DE_UTM.join(", ")}.
           </p>
         </div>
 
