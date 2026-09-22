@@ -4,8 +4,6 @@ services:
     pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     mem_limit: 768m
-    ports:
-      - "3300:3000"
 
     environment:
       # ─────────────────────────────────────────────
