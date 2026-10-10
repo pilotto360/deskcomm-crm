@@ -143,8 +143,9 @@ export function CanalParceiroClient() {
   };
 
   const currentOption = estado?.options?.find((o) => o.id === selectedProvider) ?? estado?.options?.[0];
-  const supportsBaseUrl = currentOption?.supportsBaseUrl ?? false;
-  const supportsPhoneNumberId = currentOption?.supportsPhoneNumberId ?? false;
+  const isDirectApi = currentOption ? !currentOption.requiresAccountId : true;
+  const supportsBaseUrl = currentOption?.supportsBaseUrl ?? isDirectApi;
+  const supportsPhoneNumberId = currentOption?.supportsPhoneNumberId ?? isDirectApi;
   const requiresAccount = currentOption?.requiresAccountId ?? !estado?.options;
   const conectado = estado?.connected ?? false;
   const rotulo = estado?.label ?? currentOption?.label ?? t("provedor parceiro");
