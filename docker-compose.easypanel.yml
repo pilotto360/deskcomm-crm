@@ -1,12 +1,7 @@
 services:
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        APP_VERSION: ${APP_VERSION:-local}
-    image: ${APP_IMAGE:-deskcomm-app:local}
-    pull_policy: ${APP_PULL_POLICY:-build}
+    image: ${APP_IMAGE:-ghcr.io/pilotto360/deskcommcrm:latest}
+    pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     mem_limit: 768m
 
@@ -113,13 +108,8 @@ services:
       start_period: 40s
 
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-      args:
-        APP_VERSION: ${APP_VERSION:-local}
-    image: ${WORKER_IMAGE:-deskcomm-worker:local}
-    pull_policy: ${WORKER_PULL_POLICY:-build}
+    image: ${WORKER_IMAGE:-ghcr.io/pilotto360/deskcomm-worker:latest}
+    pull_policy: ${WORKER_PULL_POLICY:-always}
     restart: unless-stopped
     mem_limit: 512m
 
