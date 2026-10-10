@@ -47,10 +47,10 @@ describe("omniqueAdapter", () => {
 
     expect(res.externalId).toBe("msg_999");
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("https://test.omnique.com.br/chat-send");
-    expect(init.headers.Authorization).toBe("Bearer zpk_test_key_123");
-    const body = JSON.parse(init.body);
+    const call = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(call[0]).toBe("https://test.omnique.com.br/chat-send");
+    expect((call[1].headers as Record<string, string>).Authorization).toBe("Bearer zpk_test_key_123");
+    const body = JSON.parse(call[1].body as string);
     expect(body.to).toBe("5519999998888");
     expect(body.type).toBe("text");
     expect(body.text).toBe("Olá do DeskcommCRM!");
@@ -73,8 +73,8 @@ describe("omniqueAdapter", () => {
     });
 
     expect(res.externalId).toBe("media_888");
-    const [, init] = fetchMock.mock.calls[0];
-    const body = JSON.parse(init.body);
+    const mediaCall = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(mediaCall[1].body as string);
     expect(body.type).toBe("image");
     expect(body.media.link).toBe("https://cdn.exemplo.com/foto.jpg");
     expect(body.media.caption).toBe("Foto de exemplo");
@@ -119,7 +119,7 @@ describe("webhook Omnique", () => {
 
   it("extrai texto de mensagem e de echo", () => {
     const msgData = { message: { id: "1", from: "123", type: "text", text: { body: "Texto do cliente" } } };
-    expect(extrairTextoMensagem(msgData)).toBe("Texto de cliente" ? "Texto do cliente" : null);
+    expect(extrairTextoMensagem(msgData)).toBe("Texto do cliente");
 
     const echoData = { echo: { id: "2", from: "me", to: "123", type: "text", text: { body: "Meu eco" } } };
     expect(extrairTextoMensagem(echoData)).toBe("Meu eco");
