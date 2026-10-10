@@ -281,13 +281,14 @@ Por baixo, cada evento vira uma linha em `event_log` — nenhum trigger de banco
 ## Features
 
 ### Conexão WhatsApp via Provedor Parceiro (Omnique)
-- **Descrição:** Integração nativa com a API oficial do WhatsApp (Cloud API) via provedor parceiro Omnique, permitindo conectar o número oficial com apenas a Chave de API (`zpk_...`), sem necessidade de gerenciar WABA ID diretamente na Meta.
+- **Descrição:** Integração nativa com a API oficial do WhatsApp (Cloud API) via provedor parceiro Omnique, permitindo conectar o número oficial com a Chave de API (`zpk_...`), Phone Number ID dedicado (opcional se houver 1 número) e URL base customizada (com fallback para `https://auth.omnique.com.br/functions/v1`).
 - **Fluxo:**
   1. No menu lateral, acesse **Conexões** e abra a aba **Provedor parceiro**.
-  2. Selecione **Omnique** como provedor parceiro e insira a Chave de API (`zpk_...`).
-  3. Ao clicar em **Conectar**, o CRM valida as credenciais contra a API da Omnique e obtém o número e nome verificados.
-  4. O CRM gera a URL do Webhook (`/api/v1/webhooks/channel/[token]`) e o segredo de assinatura para configuração no painel da Omnique.
-  5. Mensagens enviadas saem via `POST /chat-send` e eventos recebidos são validados via HMAC-SHA256 (`x-omnique-signature-256`) e ingeridos nas conversas e contatos.
+  2. Selecione **Omnique** como provedor parceiro.
+  3. Informe a **URL Base da Omnique** (ou utilize o padrão `https://auth.omnique.com.br/functions/v1`), o **Phone Number ID** (opcional se houver apenas 1 número na conta) e a **Chave de API** (`zpk_...`).
+  4. Ao clicar em **Conectar**, o CRM valida as credenciais contra a API da Omnique e obtém o número e nome verificados da Meta.
+  5. O CRM gera a URL do Webhook (`/api/v1/webhooks/channel/[token]`) e o segredo de assinatura para configuração no painel da Omnique.
+  6. Mensagens enviadas saem via `POST /chat-send` e eventos recebidos são validados via HMAC-SHA256 (`x-omnique-signature-256`) e ingeridos nas conversas e contatos.
 
 ---
 

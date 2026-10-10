@@ -24,7 +24,7 @@ export interface OmniqueValidation {
 
 export function omniqueBaseUrl(): string {
   const envUrl = process.env.OMNIQUE_API_BASE_URL?.trim();
-  return envUrl || "https://bmsmuuzglqqoebaudcwk.supabase.co/functions/v1";
+  return envUrl || "https://auth.omnique.com.br/functions/v1";
 }
 
 export async function resolveOmniqueCreds(
@@ -37,7 +37,7 @@ export async function resolveOmniqueCreds(
   const base = () => {
     let q = admin
       .from("channel_sessions")
-      .select("id, omnique_instance_id, omnique_api_key_encrypted")
+      .select("id, omnique_instance_id, omnique_api_key_encrypted, metadata")
       .eq("organization_id", organizationId)
       .eq("provider", "omnique");
     if (instanceId) q = q.eq("omnique_instance_id", instanceId);
@@ -53,28 +53,65 @@ export async function resolveOmniqueCreds(
     throw new Error(`omnique_creds_lookup_failed: ${error.code} ${error.message}`);
   }
 
-  const row = data as { id: string; omnique_instance_id: string | null; omnique_api_key_encrypted: string | null } | null;
+  const row = data as {
+    id: string;
+    omnique_instance_id: string | null;
+    omnique_api_key_encrypted: string | null;
+    metadata: Record<string, unknown> | null;
+  } | null;
   if (!row || !row.omnique_api_key_encrypted) return null;
 
   const apiKey = await decryptWebhookSecret(admin, row.omnique_api_key_encrypted);
   if (!apiKey) return null;
 
+  const metaUrl = typeof row.metadata?.omnique_base_url === "string" ? row.metadata.omnique_base_url.trim() : "";
+
   return {
     instanceId: row.omnique_instance_id || row.id,
     apiKey,
-    baseUrl: omniqueBaseUrl(),
+    baseUrl: metaUrl || omniqueBaseUrl(),
     source: "session",
   };
 }
 
+export interface ValidateOmniqueInput {
+  apiKey: string;
+  baseUrl?: string;
+  phoneNumberId?: string;
+}
+
+interface OmniqueNumberItem {
+  id?: string;
+  display_phone_number?: string;
+  verified_name?: string;
+}
+
+function selectOmniqueNumber(
+  numbers: OmniqueNumberItem[],
+  preferredId?: string,
+): { instanceId: string; phoneNumber: string | null; displayName: string | null } {
+  const cleanPref = preferredId?.trim();
+  const matched = cleanPref ? numbers.find((n) => n.id === cleanPref) : undefined;
+  const chosen = matched ?? numbers[0];
+
+  return {
+    instanceId: chosen?.id || cleanPref || "default",
+    phoneNumber: chosen?.display_phone_number ?? null,
+    displayName: chosen?.verified_name ?? null,
+  };
+}
+
 export async function validateOmniqueCredentials(
-  apiKey: string,
+  input: ValidateOmniqueInput | string,
 ): Promise<OmniqueValidation> {
-  const cleanKey = apiKey.trim();
+  const opts = typeof input === "string" ? { apiKey: input } : input;
+  const cleanKey = opts.apiKey.trim();
   if (!cleanKey) return { ok: false, reason: "Chave de API não informada." };
 
+  const endpoint = opts.baseUrl?.trim() || omniqueBaseUrl();
+
   try {
-    const res = await fetch(`${omniqueBaseUrl()}/chat-manage`, {
+    const res = await fetch(`${endpoint}/chat-manage`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${cleanKey}`,
@@ -85,7 +122,7 @@ export async function validateOmniqueCredentials(
 
     const json = (await res.json().catch(() => ({}))) as {
       ok?: boolean;
-      data?: { data?: Array<{ display_phone_number?: string; verified_name?: string; id?: string }> };
+      data?: { data?: OmniqueNumberItem[] };
       error?: string;
       detail?: string;
     };
@@ -94,12 +131,14 @@ export async function validateOmniqueCredentials(
       return { ok: false, reason: json.detail || json.error || `HTTP ${res.status}` };
     }
 
-    const firstNum = json.data?.data?.[0];
+    const numbers = json.data?.data ?? [];
+    const selected = selectOmniqueNumber(numbers, opts.phoneNumberId);
     return {
       ok: true,
-      instanceId: firstNum?.id || "default",
-      phoneNumber: firstNum?.display_phone_number ?? null,
-      displayName: firstNum?.verified_name ?? null,
+      instanceId: selected.instanceId,
+      phoneNumber: selected.phoneNumber,
+      displayName: selected.displayName,
+      baseUrl: endpoint,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : "rede_indisponivel";

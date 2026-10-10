@@ -26,6 +26,8 @@ export const runtime = "nodejs";
 const conectarSchema = z.object({
   provider: z.string().optional(),
   account_id: z.string().trim().max(200).optional(),
+  phone_number_id: z.string().trim().max(200).optional(),
+  base_url: z.string().trim().url().max(500).optional().or(z.literal("")),
   api_key: z.string().trim().min(8).max(500),
 });
 
@@ -41,6 +43,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   const sessao = await findPartnerSession(createAdminClient(), authz.org.orgId);
   const conectado = !!sessao && !sessao.archivedAt;
   const rotulo = partnerLabel(sessao?.provider);
+  const defaultEndpoint = partnerEndpoint();
 
   return ok(
     {
@@ -50,15 +53,28 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       provider: conectado ? sessao.provider : defaultPartnerProvider(),
       options: PARTNER_OPTIONS,
       account_id: conectado ? sessao.accountId : null,
+      phone_number_id: conectado ? sessao.accountId : null,
       phone_number: conectado ? sessao.phoneNumber : null,
       display_name: conectado ? sessao.displayName : null,
       status: conectado ? sessao.status : null,
       has_api_key: conectado ? sessao.hasApiKey : false,
-      endpoint: conectado ? partnerEndpoint(sessao.provider) : null,
+      endpoint: conectado ? (sessao.baseUrl ?? partnerEndpoint(sessao.provider)) : defaultEndpoint,
+      base_url: conectado ? (sessao.baseUrl ?? partnerEndpoint(sessao.provider)) : defaultEndpoint,
       webhook_url: conectado && sessao.webhookPathToken ? urlDoWebhook(req, sessao.webhookPathToken) : null,
     },
     { requestId },
   );
+}
+
+async function cifrarSegredos(
+  admin: ReturnType<typeof createAdminClient>,
+  apiKey: string,
+): Promise<{ chaveCifrada: string; segredoWebhook: string; segredoCifrado: string } | null> {
+  const chaveCifrada = await encryptWebhookSecret(admin, apiKey);
+  const segredoWebhook = randomBytes(32).toString("hex");
+  const segredoCifrado = await encryptWebhookSecret(admin, segredoWebhook);
+  if (!chaveCifrada || !segredoCifrado) return null;
+  return { chaveCifrada, segredoWebhook, segredoCifrado };
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -70,40 +86,39 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const t = (texto: string) => traduzir(texto, authz.user.idioma);
 
   const parsed = conectarSchema.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) {
-    return fail("invalid_request", t("Chave de API é obrigatória"), 422, { requestId });
-  }
+  if (!parsed.success) return fail("invalid_request", t("Chave de API é obrigatória"), 422, { requestId });
 
+  const effectivePhoneId = parsed.data.phone_number_id?.trim() || parsed.data.account_id?.trim();
+  const effectiveBaseUrl = parsed.data.base_url?.trim() || undefined;
   const v = await validatePartnerCredentials({
     provider: parsed.data.provider,
-    accountId: parsed.data.account_id,
+    accountId: effectivePhoneId,
+    phoneNumberId: effectivePhoneId,
+    baseUrl: effectiveBaseUrl,
     apiKey: parsed.data.api_key,
   });
   if (!v.ok) return fail("invalid_request", v.reason, 422, { requestId });
 
   const admin = createAdminClient();
-  const chaveCifrada = await encryptWebhookSecret(admin, parsed.data.api_key);
-  const segredoWebhook = randomBytes(32).toString("hex");
-  const segredoCifrado = await encryptWebhookSecret(admin, segredoWebhook);
-
-  if (!chaveCifrada || !segredoCifrado) {
-    return fail("invalid_request", t("cifra indisponível nesta instalação"), 422, { requestId });
-  }
+  const cifrados = await cifrarSegredos(admin, parsed.data.api_key);
+  if (!cifrados) return fail("invalid_request", t("cifra indisponível nesta instalação"), 422, { requestId });
 
   const existente = await findPartnerSession(admin, authz.org.orgId);
   const token = existente?.webhookPathToken ?? randomBytes(16).toString("hex");
   const rotulo = partnerLabel(parsed.data.provider);
+  const finalInstanceId = (v.instanceId || effectivePhoneId)?.trim() || "default";
 
   const { error } = await savePartnerSession(admin, {
     organizationId: authz.org.orgId,
     existingId: existente?.id ?? null,
     provider: parsed.data.provider,
-    accountId: parsed.data.account_id?.trim(),
-    apiKeyEncrypted: chaveCifrada,
+    accountId: finalInstanceId,
+    apiKeyEncrypted: cifrados.chaveCifrada,
     webhookPathToken: token,
-    webhookSecretEncrypted: segredoCifrado,
+    webhookSecretEncrypted: cifrados.segredoCifrado,
     phoneNumber: v.phoneNumber ? `+${v.phoneNumber.replace(/\D/g, "")}` : null,
     displayName: v.displayName ?? rotulo,
+    baseUrl: effectiveBaseUrl,
   });
   if (error) return fail("internal_error", error, 500, { requestId });
 
@@ -114,7 +129,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       display_name: v.displayName ?? rotulo,
       quality_rating: v.qualityRating,
       webhook_url: urlDoWebhook(req, token),
-      webhook_secret: segredoWebhook,
+      webhook_secret: cifrados.segredoWebhook,
     },
     { requestId },
   );

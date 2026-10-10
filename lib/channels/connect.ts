@@ -23,6 +23,9 @@ export interface PartnerOption {
   requiresAccountId: boolean;
   keyPlaceholder: string;
   description: string;
+  supportsBaseUrl?: boolean;
+  supportsPhoneNumberId?: boolean;
+  defaultBaseUrl?: string;
 }
 
 export const PARTNER_OPTIONS: PartnerOption[] = [
@@ -32,6 +35,9 @@ export const PARTNER_OPTIONS: PartnerOption[] = [
     requiresAccountId: false,
     keyPlaceholder: "zpk_...",
     description: "Conecte seu WhatsApp através da Omnique (Cloud API oficial). Basta informar sua chave de API.",
+    supportsBaseUrl: true,
+    supportsPhoneNumberId: true,
+    defaultBaseUrl: "https://auth.omnique.com.br/functions/v1",
   },
   {
     id: "zernio",
@@ -60,6 +66,8 @@ export interface PartnerCredentialsInput {
   provider?: string;
   accountId?: string;
   apiKey: string;
+  baseUrl?: string;
+  phoneNumberId?: string;
 }
 
 export type PartnerValidation =
@@ -68,6 +76,8 @@ export type PartnerValidation =
       phoneNumber: string | null;
       displayName: string | null;
       qualityRating: string | null;
+      instanceId?: string;
+      baseUrl?: string;
     }
   | { ok: false; reason: string };
 
@@ -98,14 +108,20 @@ async function validateZernio(accountId: string, apiKey: string): Promise<Partne
   };
 }
 
-async function validateOmnique(apiKey: string): Promise<PartnerValidation> {
-  const res = await validateOmniqueCredentials(apiKey);
+async function validateOmnique(
+  apiKey: string,
+  baseUrl?: string,
+  phoneNumberId?: string,
+): Promise<PartnerValidation> {
+  const res = await validateOmniqueCredentials({ apiKey, baseUrl, phoneNumberId });
   if (!res.ok) return { ok: false, reason: res.reason || "Chave recusada pela Omnique." };
   return {
     ok: true,
     phoneNumber: res.phoneNumber ?? null,
     displayName: res.displayName ?? "Omnique",
     qualityRating: "GREEN",
+    instanceId: res.instanceId,
+    baseUrl: res.baseUrl,
   };
 }
 
@@ -116,7 +132,7 @@ export async function validatePartnerCredentials(input: PartnerCredentialsInput)
 
   if (!apiKey) return { ok: false, reason: "Informe a chave de API." };
   if (provider === "omnique" || provider === CHANNEL_PROVIDER_OMNIQUE) {
-    return validateOmnique(apiKey);
+    return validateOmnique(apiKey, input.baseUrl, input.phoneNumberId || accountId);
   }
   if (!accountId) return { ok: false, reason: "Informe o Account ID." };
   return validateZernio(accountId, apiKey);
@@ -132,14 +148,17 @@ export interface PartnerSession {
   webhookPathToken: string | null;
   hasApiKey: boolean;
   archivedAt: string | null;
+  baseUrl?: string | null;
 }
 
 const COLUNAS =
-  "id, provider, zernio_account_id, omnique_instance_id, phone_number, display_name, status, webhook_path_token, zernio_token_encrypted, omnique_api_key_encrypted";
+  "id, provider, zernio_account_id, omnique_instance_id, phone_number, display_name, status, webhook_path_token, zernio_token_encrypted, omnique_api_key_encrypted, metadata";
 
 function toPartnerSession(row: Record<string, unknown> | null): PartnerSession | null {
   if (!row) return null;
   const isOmnique = row.provider === CHANNEL_PROVIDER_OMNIQUE;
+  const meta = (row.metadata as Record<string, unknown> | null) ?? {};
+  const metaBaseUrl = typeof meta.omnique_base_url === "string" ? meta.omnique_base_url : null;
   return {
     id: row.id as string,
     provider: (row.provider as ChannelProvider) ?? (isOmnique ? CHANNEL_PROVIDER_OMNIQUE : CHANNEL_PROVIDER_ZERNIO),
@@ -150,6 +169,7 @@ function toPartnerSession(row: Record<string, unknown> | null): PartnerSession |
     webhookPathToken: (row.webhook_path_token as string) ?? null,
     hasApiKey: isOmnique ? !!row.omnique_api_key_encrypted : !!row.zernio_token_encrypted,
     archivedAt: (row.archived_at as string) ?? null,
+    baseUrl: isOmnique ? (metaBaseUrl || omniqueBaseUrl()) : null,
   };
 }
 
@@ -189,8 +209,16 @@ function buildPartnerRow(input: {
   webhookSecretEncrypted: string;
   phoneNumber: string | null;
   displayName: string;
+  baseUrl?: string;
+  metadata?: Record<string, unknown>;
 }): Record<string, unknown> {
   const isOmnique = input.provider === "omnique" || input.provider === CHANNEL_PROVIDER_OMNIQUE || !input.accountId;
+  const metadata: Record<string, unknown> = {
+    ...(input.metadata ?? metadataInicialDoCanal()),
+  };
+  if (isOmnique && input.baseUrl) {
+    metadata.omnique_base_url = input.baseUrl.trim();
+  }
   const row: Record<string, unknown> = {
     organization_id: input.organizationId,
     provider: isOmnique ? CHANNEL_PROVIDER_OMNIQUE : CHANNEL_PROVIDER_ZERNIO,
@@ -200,6 +228,7 @@ function buildPartnerRow(input: {
     display_name: input.displayName,
     status: "WORKING",
     archived_at: null,
+    metadata,
   };
   if (isOmnique) {
     row.omnique_instance_id = input.accountId || "default";
@@ -223,12 +252,24 @@ export async function savePartnerSession(
     webhookSecretEncrypted: string;
     phoneNumber: string | null;
     displayName: string;
+    baseUrl?: string;
   },
 ): Promise<{ error: string | null }> {
-  const linha = buildPartnerRow(input);
+  let existingMetadata: Record<string, unknown> | undefined;
+  if (input.existingId) {
+    const { data } = await admin
+      .from("channel_sessions")
+      .select("metadata")
+      .eq("id", input.existingId)
+      .maybeSingle();
+    if (data?.metadata) {
+      existingMetadata = data.metadata as Record<string, unknown>;
+    }
+  }
+  const linha = buildPartnerRow({ ...input, metadata: existingMetadata });
   const { error } = input.existingId
     ? await admin.from("channel_sessions").update(linha).eq("id", input.existingId)
-    : await admin.from("channel_sessions").insert({ ...linha, metadata: metadataInicialDoCanal() });
+    : await admin.from("channel_sessions").insert(linha);
 
   return { error: error?.message ?? null };
 }

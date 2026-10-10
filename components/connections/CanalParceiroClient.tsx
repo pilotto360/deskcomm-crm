@@ -19,6 +19,9 @@ interface PartnerOption {
   requiresAccountId: boolean;
   keyPlaceholder: string;
   description: string;
+  supportsBaseUrl?: boolean;
+  supportsPhoneNumberId?: boolean;
+  defaultBaseUrl?: string;
 }
 
 interface Estado {
@@ -34,6 +37,8 @@ interface Estado {
   has_api_key: boolean;
   webhook_url: string | null;
   endpoint: string | null;
+  base_url?: string | null;
+  phone_number_id?: string | null;
 }
 
 interface Conectado {
@@ -72,6 +77,8 @@ export function CanalParceiroClient() {
   const [estado, setEstado] = useState<Estado | null>(null);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [accountId, setAccountId] = useState("");
+  const [phoneNumberId, setPhoneNumberId] = useState("");
+  const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [recemConectado, setRecemConectado] = useState<Conectado | null>(null);
@@ -80,8 +87,13 @@ export function CanalParceiroClient() {
     try {
       const r = await apiClient.get<{ data: Estado }>("/api/v1/channels/partner");
       setEstado(r.data);
-      setSelectedProvider(r.data.provider || r.data.options?.[0]?.id || "");
+      const prov = r.data.provider || r.data.options?.[0]?.id || "";
+      setSelectedProvider(prov);
       if (r.data.account_id) setAccountId(r.data.account_id);
+      if (r.data.phone_number_id) setPhoneNumberId(r.data.phone_number_id);
+      if (r.data.base_url || r.data.endpoint) {
+        setBaseUrl(r.data.base_url || r.data.endpoint || "");
+      }
     } catch {
       setEstado(null);
     }
@@ -94,11 +106,16 @@ export function CanalParceiroClient() {
   const conectar = async () => {
     setSalvando(true);
     try {
-      const r = await apiClient.post<{ data: Conectado }>("/api/v1/channels/partner", {
-        provider: selectedProvider,
-        account_id: accountId,
-        api_key: apiKey,
-      });
+      const payload: Record<string, string> = { api_key: apiKey };
+      if (selectedProvider) payload.provider = selectedProvider;
+      if (requiresAccount && accountId) payload.account_id = accountId;
+      if (supportsPhoneNumberId && phoneNumberId.trim()) {
+        payload.phone_number_id = phoneNumberId.trim();
+      }
+      if (supportsBaseUrl && baseUrl.trim()) {
+        payload.base_url = baseUrl.trim();
+      }
+      const r = await apiClient.post<{ data: Conectado }>("/api/v1/channels/partner", payload);
       setRecemConectado(r.data);
       setApiKey("");
       toast.success(t("Canal conectado."));
@@ -126,7 +143,9 @@ export function CanalParceiroClient() {
   };
 
   const currentOption = estado?.options?.find((o) => o.id === selectedProvider) ?? estado?.options?.[0];
-  const requiresAccount = currentOption?.requiresAccountId ?? false;
+  const supportsBaseUrl = currentOption?.supportsBaseUrl ?? false;
+  const supportsPhoneNumberId = currentOption?.supportsPhoneNumberId ?? false;
+  const requiresAccount = currentOption?.requiresAccountId ?? !estado?.options;
   const conectado = estado?.connected ?? false;
   const rotulo = estado?.label ?? currentOption?.label ?? t("provedor parceiro");
   const podeSalvar = salvando || !apiKey || (requiresAccount && !accountId);
@@ -174,6 +193,7 @@ export function CanalParceiroClient() {
               <p className="font-medium">{estado?.display_name ?? t("Número conectado")}</p>
               <p className="text-xs text-muted-foreground">
                 {estado?.phone_number ?? t("sem número informado")} · {estado?.status ?? "—"}
+                {estado?.account_id && ` · ID: ${estado.account_id}`}
               </p>
             </div>
             <Button size="sm" variant="ghost" onClick={desconectar} disabled={salvando}>
@@ -185,6 +205,38 @@ export function CanalParceiroClient() {
         {estado?.channel_session_id && <ChannelAiAccess channelId={estado.channel_session_id} />}
 
         <div className="flex flex-col gap-3">
+          {supportsBaseUrl && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="parceiro-base-url">{t("URL Base do Provedor")}</Label>
+              <Input
+                id="parceiro-base-url"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder={currentOption?.defaultBaseUrl || estado?.endpoint || "https://..."}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("Endpoint das Cloud Functions da API parceira.")}
+              </p>
+            </div>
+          )}
+
+          {supportsPhoneNumberId && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="parceiro-phone-id">{t("Phone Number ID")}</Label>
+              <Input
+                id="parceiro-phone-id"
+                value={phoneNumberId}
+                onChange={(e) => setPhoneNumberId(e.target.value)}
+                placeholder={t("ex: 104829104810293 (opcional se houver 1 número)")}
+                autoComplete="off"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("ID do número na Meta. Se vazio, o sistema detecta automaticamente na conta.")}
+              </p>
+            </div>
+          )}
+
           {requiresAccount && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="parceiro-conta">{t("Conta / Account ID")}</Label>
