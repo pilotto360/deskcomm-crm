@@ -107,6 +107,15 @@ export const PUBLIC_PATHS: RegExp[] = [
   // dois nomes de propósito: `/^\/legal/` deixaria qualquer sub-path futuro
   // nascer público de carona.
   /^\/legal\/(terms|privacy)$/,
+  // Checkout direto de conversão (migration 0381) — quem chama é o navegador
+  // do DOADOR, sem sessão nossa, exatamente como a landing page de gclid
+  // logo acima. A página em si (`/doar/[org]`) e as duas rotas que ela chama
+  // (criar a intenção, e consultar o status para o polling do QR) precisam
+  // das três entradas: sem elas o proxy devolve 307 para `/login` antes do
+  // handler rodar, e um doador não tem — nem deve ter — conta no CRM.
+  /^\/doar\/[^/]+$/,
+  /^\/api\/v1\/checkout\/[^/]+\/intents$/,
+  /^\/api\/v1\/checkout\/[^/]+\/intents\/[^/]+$/,
 ];
 
 export function isPublicPath(pathname: string): boolean {

@@ -86,6 +86,16 @@ export const CHANNEL_CAPABILITIES: Record<ProviderDeMensagem, ChannelCapabilitie
     groups: "limited",
     costPerMessage: true,
   },
+  omnique: {
+    freeformOutsideWindow: false,
+    requiresTemplates: true,
+    canManageTemplates: true,
+    banRisk: false,
+    minIntervalMs: 1000,
+    voiceNote: "opus-only",
+    groups: "none",
+    costPerMessage: true,
+  },
 };
 
 /**
@@ -108,6 +118,7 @@ export const CHANNEL_PROVIDER_WAHA: ChannelProvider = "waha";
 export const CHANNEL_PROVIDER_META: ChannelProvider = "meta_cloud";
 export const CHANNEL_PROVIDER_SOCIAL: ChannelProvider = "zernio_social";
 export const CHANNEL_PROVIDER_ZERNIO: ChannelProvider = "zernio";
+export const CHANNEL_PROVIDER_OMNIQUE: ChannelProvider = "omnique";
 /** Chamada de voz WhatsApp (spec 18). Não transporta mensagem — ver abaixo. */
 export const CHANNEL_PROVIDER_WACALLS: ChannelProvider = "wacalls";
 
@@ -131,6 +142,7 @@ export const PROVIDERS_DE_MENSAGEM = [
   "meta_cloud",
   "zernio",
   "zernio_social",
+  "omnique",
 ] as const satisfies readonly ProviderDeMensagem[];
 
 /**

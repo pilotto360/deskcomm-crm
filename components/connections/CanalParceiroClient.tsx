@@ -13,39 +13,26 @@ import { useT } from "@/hooks/i18n/useT";
 import { ChannelAiAccess } from "./ChannelAiAccess";
 import { ParaIntegrar } from "./ParaIntegrar";
 
-/**
- * Conectar um número por um PROVEDOR PARCEIRO.
- *
- * ─── Por que a tela não escreve o nome do provedor ──────────────────────────
- *
- * O rótulo vem do servidor (`label`), e não de uma string aqui, porque o
- * `lint:channels` proíbe nomear provider fora de `lib/channels/` — e a razão é
- * anterior ao lint: no dia em que houver um segundo parceiro, esta tela não
- * muda. O que o usuário lê continua sendo a marca que ele contratou.
- *
- * ─── A ordem dos passos é a ordem em que dá errado ──────────────────────────
- *
- * Conectar são DUAS pontas: a chave, que deixa a gente FALAR com o provedor, e
- * o webhook, que deixa o provedor falar com a gente. Quem faz só a primeira
- * consegue enviar e nunca recebe — e o defeito aparece como "o cliente
- * respondeu e não chegou", horas depois, sem nada na tela dizendo por quê.
- *
- * Por isso o segundo passo só aparece DEPOIS de conectar, com a URL e o segredo
- * prontos para copiar, e um aviso explícito de que sem colá-los não entra
- * mensagem.
- */
+interface PartnerOption {
+  id: string;
+  label: string;
+  requiresAccountId: boolean;
+  keyPlaceholder: string;
+  description: string;
+}
 
 interface Estado {
   channel_session_id?: string | null;
   label: string;
   connected: boolean;
+  provider?: string;
+  options?: PartnerOption[];
   account_id: string | null;
   phone_number: string | null;
   display_name: string | null;
   status: string | null;
   has_api_key: boolean;
   webhook_url: string | null;
-  /** Endpoint base do provedor — usado no painel "Para integrar". */
   endpoint: string | null;
 }
 
@@ -56,7 +43,6 @@ interface Conectado {
   quality_rating: string | null;
 }
 
-/** Campo somente-leitura com botão de copiar — o que o operador cola do outro lado. */
 function ParaColar({ rotulo, valor }: { rotulo: string; valor: string }) {
   const t = useT();
   return (
@@ -84,6 +70,7 @@ function ParaColar({ rotulo, valor }: { rotulo: string; valor: string }) {
 export function CanalParceiroClient() {
   const t = useT();
   const [estado, setEstado] = useState<Estado | null>(null);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [accountId, setAccountId] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -93,9 +80,9 @@ export function CanalParceiroClient() {
     try {
       const r = await apiClient.get<{ data: Estado }>("/api/v1/channels/partner");
       setEstado(r.data);
+      setSelectedProvider(r.data.provider || r.data.options?.[0]?.id || "");
       if (r.data.account_id) setAccountId(r.data.account_id);
     } catch {
-      // Falha de leitura não deve travar a tela: o formulário continua servindo.
       setEstado(null);
     }
   };
@@ -108,12 +95,11 @@ export function CanalParceiroClient() {
     setSalvando(true);
     try {
       const r = await apiClient.post<{ data: Conectado }>("/api/v1/channels/partner", {
+        provider: selectedProvider,
         account_id: accountId,
         api_key: apiKey,
       });
       setRecemConectado(r.data);
-      // A chave sai da memória da tela assim que é gravada: ela não volta num
-      // GET, e deixá-la no input só cria uma cópia a mais de um segredo.
       setApiKey("");
       toast.success(t("Canal conectado."));
       await carregar();
@@ -124,8 +110,26 @@ export function CanalParceiroClient() {
     }
   };
 
-  const rotulo = estado?.label ?? t("provedor parceiro");
+  const desconectar = async () => {
+    if (!confirm(t("Deseja realmente desconectar este canal?"))) return;
+    setSalvando(true);
+    try {
+      await apiClient.delete("/api/v1/channels/partner");
+      setRecemConectado(null);
+      toast.success(t("Canal desconectado."));
+      await carregar();
+    } catch (e) {
+      toast.error(e instanceof Error ? t(e.message) : t("Falha ao desconectar."));
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const currentOption = estado?.options?.find((o) => o.id === selectedProvider) ?? estado?.options?.[0];
+  const requiresAccount = currentOption?.requiresAccountId ?? false;
   const conectado = estado?.connected ?? false;
+  const rotulo = estado?.label ?? currentOption?.label ?? t("provedor parceiro");
+  const podeSalvar = salvando || !apiKey || (requiresAccount && !accountId);
 
   return (
     <div className="flex flex-col gap-4">
@@ -136,9 +140,8 @@ export function CanalParceiroClient() {
               {t("Conectar por")} {rotulo}
             </h3>
             <p className="text-xs text-muted-foreground">
-              {t(
-                "Um número oficial (WhatsApp Business) conectado através do seu provedor. As mensagens entram e saem pelo CRM, e os modelos aprovados são os mesmos da sua conta.",
-              )}
+              {currentOption?.description ??
+                t("Um número oficial conectado através do provedor. As mensagens entram e saem pelo CRM.")}
             </p>
           </div>
           {conectado ? (
@@ -148,30 +151,52 @@ export function CanalParceiroClient() {
           )}
         </div>
 
+        {estado?.options && estado.options.length > 1 && !conectado && (
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-muted-foreground">{t("Provedor:")}</span>
+            {estado.options.map((opt) => (
+              <Button
+                key={opt.id}
+                type="button"
+                size="sm"
+                variant={selectedProvider === opt.id ? "default" : "outline"}
+                onClick={() => setSelectedProvider(opt.id)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+        )}
+
         {conectado && (
-          <div className="rounded-md border border-border bg-muted/40 p-3 text-sm">
-            <p className="font-medium">{estado?.display_name ?? t("Número conectado")}</p>
-            <p className="text-xs text-muted-foreground">
-              {estado?.phone_number ?? t("sem número informado")} · {estado?.status ?? "—"}
-            </p>
+          <div className="flex items-center justify-between rounded-md border border-border bg-muted/40 p-3 text-sm">
+            <div>
+              <p className="font-medium">{estado?.display_name ?? t("Número conectado")}</p>
+              <p className="text-xs text-muted-foreground">
+                {estado?.phone_number ?? t("sem número informado")} · {estado?.status ?? "—"}
+              </p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={desconectar} disabled={salvando}>
+              {t("Desconectar")}
+            </Button>
           </div>
         )}
 
         {estado?.channel_session_id && <ChannelAiAccess channelId={estado.channel_session_id} />}
+
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="parceiro-conta">{t("Conta")}</Label>
-            <Input
-              id="parceiro-conta"
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
-              placeholder={t("id da conta conectada no provedor")}
-              autoComplete="off"
-            />
-            <p className="text-xs text-muted-foreground">
-              {t("É o identificador do número no painel do provedor — não o da Meta.")}
-            </p>
-          </div>
+          {requiresAccount && (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="parceiro-conta">{t("Conta / Account ID")}</Label>
+              <Input
+                id="parceiro-conta"
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                placeholder={t("id da conta conectada no provedor")}
+                autoComplete="off"
+              />
+            </div>
+          )}
 
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="parceiro-chave">{t("Chave de API")}</Label>
@@ -181,50 +206,36 @@ export function CanalParceiroClient() {
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={
-                estado?.has_api_key ? t("gravada — preencha para trocar") : t("cole a chave")
+                estado?.has_api_key
+                  ? t("gravada — preencha para trocar")
+                  : currentOption?.keyPlaceholder || t("cole a chave")
               }
               autoComplete="off"
             />
             <p className="text-xs text-muted-foreground">
-              {t(
-                "Guardada cifrada. Depois de gravar ela não é mostrada de novo — para trocar, cole a nova.",
-              )}
+              {t("Guardada cifrada. A credencial é testada antes de ser gravada.")}
             </p>
           </div>
 
           <div>
-            <Button onClick={conectar} disabled={salvando || !accountId || !apiKey}>
+            <Button onClick={conectar} disabled={podeSalvar}>
               {salvando ? t("Verificando…") : conectado ? t("Reconectar") : t("Conectar")}
             </Button>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {t("A credencial é testada contra o provedor antes de ser gravada.")}
-            </p>
           </div>
         </div>
       </Card>
 
-      {/* Só depois de conectar: antes disso não há URL nem segredo a mostrar, e
-          um passo 2 vazio faz parecer que falta algo que ainda não podia existir. */}
       {recemConectado && (
         <Card className="flex flex-col gap-4 border-warning/40 bg-warning-bg p-4">
           <div>
-            <h3 className="text-sm font-semibold">{t("Falta ligar a volta")}</h3>
+            <h3 className="text-sm font-semibold">{t("Configurar Webhook no provedor")}</h3>
             <p className="text-xs text-muted-foreground">
-              {t("Cole os dois valores abaixo no webhook do seu provedor. Sem isso o CRM")}{" "}
-              <strong>{t("envia mas não recebe")}</strong>
-              {t(
-                ": a resposta do cliente não chega, e nada na tela avisa. O segredo aparece",
-              )}{" "}
-              <strong>{t("uma única vez")}</strong>
-              {t(" — se sair desta tela sem copiá-lo, reconecte para gerar outro.")}
+              {t("Cole a URL abaixo nas configurações de webhook do seu provedor para receber as mensagens.")}
             </p>
           </div>
           <ParaColar rotulo={t("URL do webhook")} valor={recemConectado.webhook_url} />
-          <ParaColar rotulo={t("Segredo (assinatura)")} valor={recemConectado.webhook_secret} />
-          {recemConectado.quality_rating && (
-            <p className="text-xs text-muted-foreground">
-              {t("Qualidade do número segundo a plataforma:")} {recemConectado.quality_rating}
-            </p>
+          {recemConectado.webhook_secret && (
+            <ParaColar rotulo={t("Segredo (assinatura)")} valor={recemConectado.webhook_secret} />
           )}
         </Card>
       )}
@@ -234,43 +245,26 @@ export function CanalParceiroClient() {
           <div>
             <h3 className="text-sm font-semibold">Webhook</h3>
             <p className="text-xs text-muted-foreground">
-              {t(
-                "O endereço que o provedor usa para entregar as mensagens. O segredo não é mostrado de novo — para obter um novo, reconecte.",
-              )}
+              {t("Endereço configurado no seu provedor para entregar as mensagens.")}
             </p>
           </div>
           <ParaColar rotulo={t("URL do webhook")} valor={estado.webhook_url} />
         </Card>
       )}
 
-      {conectado ? (
+      {conectado && estado?.endpoint && (
         <ParaIntegrar
           campos={[
-            { rotulo: t("Endpoint da API"), valor: estado?.endpoint ?? null },
-            { rotulo: t("Conta"), valor: estado?.account_id ?? null },
+            { rotulo: t("Endpoint da API"), valor: estado.endpoint },
+            { rotulo: t("Identificador"), valor: estado.account_id ?? estado.phone_number },
           ]}
           ajuda={
-            <div className="space-y-1.5">
-              <p>
-                {t(
-                  "A chave de API está no painel do provedor, na conta conectada — este CRM não a exibe de volta.",
-                )}
-              </p>
-              <p>
-                {t(
-                  "O webhook de um número aponta para um só destino. Para os dois CRMs receberem ao mesmo tempo, um deles precisa reencaminhar as mensagens ao outro.",
-                )}
-              </p>
-            </div>
-          }
-          aviso={
-            <>
-              {t("Um número tem um único webhook.")}{" "}
-              {t("Para operar em dois CRMs ao mesmo tempo, configure o reencaminhamento de mensagens.")}
-            </>
+            <p className="text-xs text-muted-foreground">
+              {t("Utilize os dados acima para integrar outros serviços, se necessário.")}
+            </p>
           }
         />
-      ) : null}
+      )}
     </div>
   );
 }

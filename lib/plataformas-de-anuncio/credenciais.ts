@@ -49,7 +49,7 @@ export async function lerCredencial(
   const { data, error } = await admin
     .from("ad_platform_connections")
     .select(
-      "dataset_id, access_token_encrypted, test_event_code, enabled, google_refresh_token_encrypted, google_customer_id, google_login_customer_id, google_conversion_action_id",
+      "dataset_id, access_token_encrypted, test_event_code, enabled, google_refresh_token_encrypted, google_customer_id, google_login_customer_id, google_conversion_action_id, google_conversion_action_id_recorrente",
     )
     .eq("organization_id", organizationId)
     .eq("platform", plataforma)
@@ -75,6 +75,7 @@ export async function lerCredencial(
     google_customer_id: string | null;
     google_login_customer_id: string | null;
     google_conversion_action_id: string | null;
+    google_conversion_action_id_recorrente: string | null;
   };
 
   if (!linha.enabled) return { ok: false, motivo: "conexao_desabilitada" };
@@ -110,6 +111,7 @@ export async function lerCredencial(
           customerId: linha.google_customer_id,
           loginCustomerId: linha.google_login_customer_id,
           conversionActionId: linha.google_conversion_action_id,
+          conversionActionIdRecorrente: linha.google_conversion_action_id_recorrente,
         },
       },
     };

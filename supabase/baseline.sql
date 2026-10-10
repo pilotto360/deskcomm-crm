@@ -36201,3 +36201,91 @@ end $$;
 -- a lista de erros benignos do update.sh, então a atualização não diz
 -- "atualizado" com módulo fora do ar. Instalação nova não tem módulo: no-op.
 do $f$ begin perform public.fn_conferir_modulos_instalados(); end $f$;
+
+-- ---- 0381: checkout direto de conversao (doacao/venda fora do funil de leads) ----
+alter table public.ad_platform_connections
+  add column if not exists google_conversion_action_id_recorrente text;
+
+comment on column public.ad_platform_connections.google_conversion_action_id_recorrente is
+  'Acao de conversao do Google Ads para venda RECORRENTE (assinatura/doacao mensal), quando diferente da acao avulsa em google_conversion_action_id. NULL = organizacao nao distingue, usa a mesma acao para os dois.';
+
+create table if not exists public.payment_provider_connections (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  provider text not null,
+  environment text not null default 'production',
+  api_key_encrypted bytea,
+  webhook_token_encrypted bytea,
+  enabled boolean not null default false,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by uuid,
+  constraint payment_provider_connections_provider_conhecido
+    check (provider in ('asaas')),
+  constraint payment_provider_connections_environment_conhecido
+    check (environment in ('sandbox', 'production'))
+);
+
+create unique index if not exists payment_provider_connections_org_provider_uk
+  on public.payment_provider_connections (organization_id, provider);
+
+alter table public.payment_provider_connections enable row level security;
+revoke all on public.payment_provider_connections from anon, authenticated;
+grant select, insert, update, delete on public.payment_provider_connections to service_role;
+
+drop trigger if exists trg_payment_provider_connections_updated_at on public.payment_provider_connections;
+create trigger trg_payment_provider_connections_updated_at
+  before update on public.payment_provider_connections
+  for each row execute function public.fn_set_updated_at();
+
+create table if not exists public.checkout_conversion_intents (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  ad_platform text not null,
+  ad_click_id text,
+  conversion_kind text not null,
+  provider text not null,
+  external_reference text not null,
+  provider_charge_id text,
+  value_cents bigint not null,
+  currency text not null default 'BRL',
+  payer_name text,
+  payer_email text,
+  payer_phone text,
+  utm jsonb not null default '{}'::jsonb,
+  status text not null default 'pending',
+  report_detail text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  paid_at timestamptz,
+  reported_at timestamptz,
+  constraint checkout_conversion_intents_ad_platform_conhecida
+    check (ad_platform in ('meta_ads', 'google_ads')),
+  constraint checkout_conversion_intents_conversion_kind_conhecido
+    check (conversion_kind in ('avulsa', 'recorrente')),
+  constraint checkout_conversion_intents_provider_conhecido
+    check (provider in ('asaas')),
+  constraint checkout_conversion_intents_status_conhecido
+    check (status in ('pending', 'paid', 'reported', 'failed', 'expired')),
+  constraint checkout_conversion_intents_value_cents_positivo
+    check (value_cents > 0)
+);
+
+create unique index if not exists checkout_conversion_intents_org_ref_uk
+  on public.checkout_conversion_intents (organization_id, external_reference);
+
+create unique index if not exists checkout_conversion_intents_org_provider_charge_uk
+  on public.checkout_conversion_intents (organization_id, provider, provider_charge_id)
+  where provider_charge_id is not null;
+
+create index if not exists checkout_conversion_intents_status_idx
+  on public.checkout_conversion_intents (organization_id, status);
+
+alter table public.checkout_conversion_intents enable row level security;
+revoke all on public.checkout_conversion_intents from anon, authenticated;
+grant select, insert, update, delete on public.checkout_conversion_intents to service_role;
+
+drop trigger if exists trg_checkout_conversion_intents_updated_at on public.checkout_conversion_intents;
+create trigger trg_checkout_conversion_intents_updated_at
+  before update on public.checkout_conversion_intents
+  for each row execute function public.fn_set_updated_at();

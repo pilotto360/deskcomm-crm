@@ -4,6 +4,7 @@
  */
 import { metaCloudAdapter } from "./adapters/meta-cloud";
 import { wahaAdapter } from "./adapters/waha";
+import { omniqueAdapter } from "./adapters/omnique";
 import { socialAdapter } from "./social/adapter";
 import { zernioAdapter } from "./adapters/zernio";
 import type { ChannelAdapter, ChannelProvider, ProviderDeMensagem } from "./types";
@@ -17,6 +18,7 @@ const ADAPTERS: Record<ProviderDeMensagem, ChannelAdapter | null> = {
   meta_cloud: metaCloudAdapter,
   zernio: zernioAdapter,
   zernio_social: socialAdapter,
+  omnique: omniqueAdapter,
 };
 
 /**

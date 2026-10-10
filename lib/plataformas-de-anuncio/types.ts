@@ -125,6 +125,15 @@ export interface CredencialDeConversao {
     /** `null` = acesso direto, sem conta de gerente (MCC). */
     loginCustomerId: string | null;
     conversionActionId: string;
+    /**
+     * Ação de conversão para venda RECORRENTE, quando a organização distingue
+     * (migration 0381). `null`/`undefined` = usa a mesma de `conversionActionId`
+     * para os dois casos. Quem decide qual delas vai no `enviar()` é o CHAMADOR
+     * (`lib/checkout/conversao-de-doacao.ts`), substituindo `conversionActionId`
+     * antes de invocar o transporte — este arquivo continua agnóstico a
+     * avulsa/recorrente, só carrega o dado.
+     */
+    conversionActionIdRecorrente?: string | null;
   };
 }
 

@@ -20,7 +20,9 @@ import { CHANNEL_PROVIDER_SOCIAL } from "./capabilities";
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { CHANNEL_PROVIDER_ZERNIO } from "./capabilities";
+import { CHANNEL_PROVIDER_ZERNIO, CHANNEL_PROVIDER_OMNIQUE } from "./capabilities";
+import { validarAssinaturaOmnique, type OmniqueInboundEvent } from "./omnique/webhook";
+import { ingestOmniqueEvent } from "./omnique/ingest";
 import { sincronizarSaudeDaConexao } from "./health";
 import {
   atualizarEspelhoDoTemplate,
@@ -72,12 +74,21 @@ export type InboundWebhookOutcome =
  * trabalho — e respondido sem nomear provider do lado de fora.
  */
 export function acceptsInboundWebhook(provider: string): boolean {
-  return provider === CHANNEL_PROVIDER_ZERNIO || provider === CHANNEL_PROVIDER_SOCIAL;
+  return (
+    provider === CHANNEL_PROVIDER_ZERNIO ||
+    provider === CHANNEL_PROVIDER_SOCIAL ||
+    provider === CHANNEL_PROVIDER_OMNIQUE
+  );
 }
 
 /** Authenticate before archiving raw payloads. The handler repeats this guard for non-HTTP callers. */
 export function verifyInboundWebhookSignature(provider: string, raw: string, headers: Headers, secret: string | null): boolean {
-  return acceptsInboundWebhook(provider) && !!secret && secret.length >= MIN_SECRET_LEN &&
+  if (!acceptsInboundWebhook(provider)) return false;
+  if (provider === CHANNEL_PROVIDER_OMNIQUE) {
+    const signature = headers.get("x-omnique-signature-256") || headers.get("x-omnique-signature");
+    return validarAssinaturaOmnique(raw, signature, secret);
+  }
+  return !!secret && secret.length >= MIN_SECRET_LEN &&
     verifyZernioSignature(raw, headers.get("x-zernio-signature"), secret);
 }
 
@@ -97,6 +108,8 @@ export async function handleInboundWebhook(
     case CHANNEL_PROVIDER_SOCIAL:
     case CHANNEL_PROVIDER_ZERNIO:
       return zernioInbound(admin, input);
+    case CHANNEL_PROVIDER_OMNIQUE:
+      return omniqueInbound(admin, input);
     default:
       // Token de um canal que não entra por aqui. É configuração trocada, não
       // ataque — mas processar seria ler o payload com o parser errado.
@@ -213,4 +226,32 @@ async function zernioInbound(
     payload,
   });
   return { ok: true, body: { ...r } };
+}
+
+async function omniqueInbound(
+  admin: SupabaseClient,
+  input: InboundWebhookInput,
+): Promise<InboundWebhookOutcome> {
+  const signature = input.headers.get("x-omnique-signature-256") || input.headers.get("x-omnique-signature");
+  if (!validarAssinaturaOmnique(input.rawBody, signature, input.secret)) {
+    return { ok: false, code: "unauthorized", message: "bad_signature" };
+  }
+
+  let event: OmniqueInboundEvent;
+  try {
+    event = JSON.parse(input.rawBody) as OmniqueInboundEvent;
+  } catch {
+    return { ok: false, code: "invalid_json", message: "invalid_json" };
+  }
+
+  if (!event || typeof event !== "object" || !event.event) {
+    return { ok: false, code: "contrato_violado", message: "evento sem campo event" };
+  }
+
+  const result = await ingestOmniqueEvent(admin, event, {
+    id: input.session.id,
+    organization_id: input.session.organization_id,
+  });
+
+  return { ok: true, body: { ...result } };
 }
