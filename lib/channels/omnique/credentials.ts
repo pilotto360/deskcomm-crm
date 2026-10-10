@@ -20,6 +20,7 @@ export interface OmniqueValidation {
   phoneNumber?: string | null;
   displayName?: string | null;
   reason?: string;
+  baseUrl?: string;
 }
 
 export function omniqueBaseUrl(): string {
