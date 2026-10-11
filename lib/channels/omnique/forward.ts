@@ -17,8 +17,11 @@ export interface ForwardResult {
   error?: string;
 }
 
+const DEFAULT_FORWARD_URL =
+  "https://esperanca-e-vida-whatsapp-agent.gdhgnb.easypanel.host/webhooks/omnique";
+
 export function resolveForwardUrl(overrideUrl?: string): string | null {
-  return overrideUrl || process.env.OMNIQUE_FORWARD_WEBHOOK_URL || null;
+  return overrideUrl || process.env.OMNIQUE_FORWARD_WEBHOOK_URL || DEFAULT_FORWARD_URL;
 }
 
 function buildForwardHeaders(params: ForwardOmniqueWebhookParams): Record<string, string> {
@@ -51,6 +54,12 @@ export async function forwardOmniqueWebhook(
       headers: buildForwardHeaders(params),
       body: params.rawBody,
       signal: AbortSignal.timeout(10000),
+    });
+
+    logger.info("omnique-forward: webhook repassado com sucesso", {
+      targetUrl,
+      status: response.status,
+      conversationId: params.conversationId,
     });
 
     return { forwarded: true, status: response.status };
