@@ -232,7 +232,7 @@ import { forwardOmniqueWebhook } from "./omnique/forward";
 
 function parseOmniqueEvent(
   rawBody: string,
-): { ok: true; event: OmniqueInboundEvent } | { ok: false; code: string; message: string } {
+): { ok: true; event: OmniqueInboundEvent } | { ok: false; code: "contrato_violado" | "invalid_json"; message: string } {
   try {
     const event = JSON.parse(rawBody) as OmniqueInboundEvent;
     if (!event || typeof event !== "object" || !event.event) {

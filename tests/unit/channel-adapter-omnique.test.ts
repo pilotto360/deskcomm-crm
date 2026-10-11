@@ -124,9 +124,9 @@ describe("omniqueAdapter", () => {
     });
 
     expect(lista).toHaveLength(1);
-    expect(lista[0].name).toBe("confirmacao_pedido");
-    expect(lista[0].status).toBe("APPROVED");
-    expect(lista[0].language).toBe("pt_BR");
+    expect(lista[0]?.name).toBe("confirmacao_pedido");
+    expect(lista[0]?.status).toBe("APPROVED");
+    expect(lista[0]?.language).toBe("pt_BR");
 
     const call = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(call[0]).toBe("https://test.omnique.com.br/chat-manage");
