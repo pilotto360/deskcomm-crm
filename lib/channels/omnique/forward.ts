@@ -17,11 +17,8 @@ export interface ForwardResult {
   error?: string;
 }
 
-const DEFAULT_FORWARD_URL =
-  "https://esperanca-e-vida-whatsapp-agent.gdhgnb.easypanel.host/webhooks/omnique";
-
 export function resolveForwardUrl(overrideUrl?: string): string | null {
-  return overrideUrl || process.env.OMNIQUE_FORWARD_WEBHOOK_URL || DEFAULT_FORWARD_URL;
+  return overrideUrl || process.env.OMNIQUE_FORWARD_WEBHOOK_URL || null;
 }
 
 function buildForwardHeaders(params: ForwardOmniqueWebhookParams): Record<string, string> {

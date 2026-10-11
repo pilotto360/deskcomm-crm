@@ -12,16 +12,27 @@ describe("omnique forward", () => {
     process.env.OMNIQUE_FORWARD_WEBHOOK_URL = originalEnv;
   });
 
-  it("retorna fallback padrao se variavel de ambiente nao estiver definida", () => {
+  it("retorna null se não houver URL configurada", () => {
     delete process.env.OMNIQUE_FORWARD_WEBHOOK_URL;
-    expect(resolveForwardUrl()).toBe(
-      "https://esperanca-e-vida-whatsapp-agent.gdhgnb.easypanel.host/webhooks/omnique",
-    );
+    expect(resolveForwardUrl()).toBeNull();
   });
 
-  it("retorna URL configurada no env com precedencia sobre o fallback", () => {
+  it("retorna URL configurada no env", () => {
     process.env.OMNIQUE_FORWARD_WEBHOOK_URL = "https://agent.example.com/webhook";
     expect(resolveForwardUrl()).toBe("https://agent.example.com/webhook");
+  });
+
+  it("não faz fetch se URL não estiver configurada", async () => {
+    delete process.env.OMNIQUE_FORWARD_WEBHOOK_URL;
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+
+    const result = await forwardOmniqueWebhook({
+      rawBody: JSON.stringify({ event: "message" }),
+      signature: "sha256=test",
+    });
+
+    expect(result.forwarded).toBe(false);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("repassa com headers esperados quando URL estiver configurada", async () => {
