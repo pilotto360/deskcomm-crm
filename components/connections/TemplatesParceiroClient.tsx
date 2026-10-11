@@ -41,6 +41,8 @@ import { useT } from "@/hooks/i18n/useT";
  * sincronizar sozinho ao abrir a tela esconderia a diferença entre "não tenho
  * nenhuma" e "não consegui perguntar".
  */
+import { TemplateMappingEditor, type TemplateSlotInfo } from "./TemplateMappingEditor";
+
 interface TemplateParceiro {
   name: string;
   language: string;
@@ -49,6 +51,8 @@ interface TemplateParceiro {
   rejectedReason: string | null;
   syncedAt: string;
   components: unknown[];
+  slots?: TemplateSlotInfo[];
+  saved_values?: Record<string, unknown>;
 }
 
 const COR_DO_ESTADO: Record<string, string> = {
@@ -513,6 +517,17 @@ export function TemplatesParceiroClient() {
                             {b.texto} <span className="text-muted-foreground">({b.tipo})</span>
                           </span>
                         ))}
+                      </div>
+                    )}
+                    {tpl.slots && tpl.slots.length > 0 && (
+                      <div className="mt-2">
+                        <TemplateMappingEditor
+                          templateName={tpl.name}
+                          templateLanguage={tpl.language}
+                          slots={tpl.slots}
+                          savedValues={tpl.saved_values}
+                          onSaved={() => qc.invalidateQueries({ queryKey: ["partner-templates"] })}
+                        />
                       </div>
                     )}
                     <p className="text-[10px] text-muted-foreground">

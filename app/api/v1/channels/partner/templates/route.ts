@@ -240,14 +240,25 @@ export async function POST(req: NextRequest): Promise<Response> {
         components: t.components,
       });
 
+      const { data: existingRow } = await admin
+        .from("meta_templates")
+        .select("saved_values")
+        .eq("organization_id", r.ctx.orgId)
+        .eq("channel_session_id", r.ctx.sessionId)
+        .eq("name", t.name)
+        .eq("language", t.language)
+        .maybeSingle();
+
+      const existingSaved = (existingRow?.saved_values as Record<string, unknown>) ?? {};
+      const mergedSavedValues = {
+        ...existingSaved,
+        ...updatedSavedValues,
+      };
+
       const { error } = await admin.from("meta_templates").upsert(
         {
           organization_id: r.ctx.orgId,
           channel_session_id: r.ctx.sessionId,
-          // A chave de unicidade herdada é `(org, waba_id, name, language)`. A
-          // conta do provider ocupa o lugar do waba porque é o que ela é: o id
-          // da conta na plataforma. O nome da coluna é da época em que só havia
-          // um canal; trocá-lo mexeria no caminho do outro, que funciona.
           waba_id: r.ctx.sessionRef,
           name: t.name,
           language: t.language,
@@ -257,7 +268,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           components: t.components,
           contract_hash: "",
           parameter_format: t.parameterFormat ?? "POSITIONAL",
-          saved_values: updatedSavedValues,
+          saved_values: mergedSavedValues,
           synced_at: agora,
           updated_at: agora,
         },
@@ -274,8 +285,77 @@ export async function POST(req: NextRequest): Promise<Response> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "erro";
     logger.error("[partner/templates] falhou", { detail: msg, requestId });
-    // A mensagem do provider CHEGA ao operador: é ela que distingue "nome
-    // inválido" de "conta sem permissão", e sem ela a tela diz só "falhou".
     return fail("upstream_error", msg, 502, { requestId });
   }
+}
+
+interface PatchMappingBody {
+  name: string;
+  language: string;
+  mappings?: Record<string, unknown>;
+  saved_values?: Record<string, string>;
+}
+
+async function persistTemplateMapping(
+  admin: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  sessionId: string,
+  body: PatchMappingBody,
+): Promise<{ ok: boolean; error?: string; saved?: Record<string, unknown> }> {
+  const { data: existing, error: findErr } = await admin
+    .from("meta_templates")
+    .select("saved_values")
+    .eq("organization_id", orgId)
+    .eq("channel_session_id", sessionId)
+    .eq("name", body.name)
+    .eq("language", body.language)
+    .maybeSingle();
+
+  if (findErr || !existing) return { ok: false, error: "Modelo não encontrado." };
+
+  const current = (existing.saved_values as Record<string, unknown>) ?? {};
+  const updated: Record<string, unknown> = {
+    ...current,
+    ...(body.saved_values ?? {}),
+  };
+  if (body.mappings) updated.mappings = body.mappings;
+
+  const { error: upErr } = await admin
+    .from("meta_templates")
+    .update({ saved_values: updated, updated_at: new Date().toISOString() })
+    .eq("organization_id", orgId)
+    .eq("channel_session_id", sessionId)
+    .eq("name", body.name)
+    .eq("language", body.language);
+
+  if (upErr) return { ok: false, error: upErr.message };
+  return { ok: true, saved: updated };
+}
+
+export async function PATCH(req: NextRequest): Promise<Response> {
+  const supportDenied = await requireSupportWrite();
+  if (supportDenied) return supportDenied;
+
+  const requestId = randomUUID();
+  const r = await contexto(requestId);
+  if (!r.ok) return r.res;
+
+  let body: PatchMappingBody;
+  try {
+    body = (await req.json()) as PatchMappingBody;
+  } catch {
+    return fail("invalid_json", "Corpo inválido.", 400, { requestId });
+  }
+
+  if (!body.name || !body.language) {
+    return fail("invalid_request", "Nome e idioma são obrigatórios.", 400, { requestId });
+  }
+
+  const admin = createAdminClient();
+  const res = await persistTemplateMapping(admin, r.ctx.orgId, r.ctx.sessionId, body);
+  if (!res.ok) {
+    return fail(res.error === "Modelo não encontrado." ? "not_found" : "internal_error", res.error ?? "erro", 400, { requestId });
+  }
+
+  return ok({ name: body.name, language: body.language, saved_values: res.saved }, { requestId });
 }

@@ -38,6 +38,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { missingSlots } from "./meta/build-components";
 import { bindingState } from "./meta/template-binding";
 import { deriveTemplateContract } from "./meta/template-contract";
+import {
+  resolveTemplateVariables,
+  type ContactData,
+  type TemplateVariableMappings,
+} from "./template-mapping";
 
 export interface PedidoDeDefinicao {
   organizationId: string;
@@ -53,6 +58,7 @@ export interface PedidoDeDefinicao {
   name: string;
   language: string;
   values: Record<string, string>;
+  contact?: ContactData | null;
 }
 
 /**
@@ -143,6 +149,16 @@ export async function conferirDefinicao(
     const fallback = extractHeaderFallback(linha.components, linha.saved_values);
     if (fallback) pedido.values["header:1"] = fallback;
   }
+
+  const rawMappings = (linha.saved_values as Record<string, unknown> | undefined)?.mappings;
+  const mappings = (rawMappings as TemplateVariableMappings) ?? undefined;
+  const resolved = resolveTemplateVariables({
+    rawValues: pedido.values,
+    mappings,
+    slotKeys: contrato.slots.map((s) => s.key),
+    ctx: { contact: pedido.contact, savedValues: linha.saved_values },
+  });
+  Object.assign(pedido.values, resolved);
 
   const faltando = missingSlots(contrato, pedido.values);
 

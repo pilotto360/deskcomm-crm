@@ -552,6 +552,15 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
   3. A URL pública permanente é gravada em `saved_values["header:1"]` do template na tabela `meta_templates`.
   4. Se um template for disparado com URL temporária pendente, o adapter do canal intercepta e espelha a mídia on-the-fly antes do envio.
 
+### Mapeamento e Associação Personalizada de Variáveis de Templates
+- **Descrição:** Permite configurar e editar a associação de cada variável/parâmetro de um modelo aprovado com dados do CRM (campos do contato, campos personalizados, dados da organização ou valores fixos), garantindo preenchimento automático inteligente e edição manual personalizável por template.
+- **Fluxo:**
+  1. Na listagem de modelos em **Conexões → Modelos**, o usuário expande o template desejado e visualiza o painel **Associação de Variáveis com o CRM**.
+  2. O sistema sugere automaticamente uma associação padrão com base no nome de cada variável (`primeiro_nome` -> primeiro nome do contato, `telefone` -> telefone, etc.).
+  3. O usuário pode alterar qualquer variável selecionando outro campo (nome completo, e-mail, campo personalizado do CRM ou valor fixo/link de mídia).
+  4. Ao clicar em **Salvar Associação**, as regras são persistidas em `saved_values.mappings` daquele template.
+  5. Nos disparos (seja pelo Inbox, por automações, por IA ou por API), o sistema interpola automaticamente as variáveis mapeadas com os dados do contato correspondente antes do envio.
+
 ### Correções Recentes (Fixes)
 - **Envio de Templates com Parâmetros Nomeados e Cabeçalho de Mídia:**
   - **O que foi corrigido:** O adapter do provedor intermediado descartava parâmetros nomeados de templates (como `{{primeiro_nome}}`) e omitia o componente de cabeçalho de mídia exigido pela Meta. Adicionalmente, a rota de listagem de templates de parceiro não serializava os slots de parâmetros, permitindo envio sem valores que falhava na validação de pré-voo (`template_missing_values`).

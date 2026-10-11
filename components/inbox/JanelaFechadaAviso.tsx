@@ -52,23 +52,37 @@ function textoDoModelo(modelo: ModeloAprovado, valores?: Record<string, string>)
   return body;
 }
 
+import {
+  resolveTemplateVariables,
+  type TemplateVariableMappings,
+} from "@/lib/channels/template-mapping";
+
 function computeInitialValues(
   atual: ModeloAprovado,
   contactName?: string | null,
 ): Record<string, string> {
   const initial: Record<string, string> = {};
-  const firstName = contactName ? contactName.trim().split(/\s+/)[0] : "";
   const headerHandle = extractHeaderExample(atual.components);
+  const rawMappings = (atual.saved_values as Record<string, unknown> | undefined)?.mappings;
+  const mappings = rawMappings as TemplateVariableMappings | undefined;
+
+  const resolved = resolveTemplateVariables({
+    rawValues: {},
+    mappings,
+    slotKeys: (atual.slots ?? []).map((s) => s.key),
+    ctx: {
+      contact: contactName ? { name: contactName } : null,
+      savedValues: atual.saved_values,
+    },
+  });
 
   for (const s of atual.slots ?? []) {
     if (s.expects === "image") {
-      const img = atual.saved_values?.["header:1"] || headerHandle || "";
+      const img = (atual.saved_values as Record<string, string> | undefined)?.["header:1"] || headerHandle || "";
       initial[s.key] = img;
       initial[`header:${s.key}`] = img;
-    } else if (s.expects === "text") {
-      if (s.key === "primeiro_nome" || s.key === "nome" || s.key === "1") {
-        initial[s.key] = firstName;
-      }
+    } else {
+      initial[s.key] = resolved[s.key] ?? "";
     }
   }
   return initial;
