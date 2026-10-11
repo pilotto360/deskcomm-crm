@@ -64,6 +64,16 @@ export interface PedidoDeDefinicao {
  * está com tudo certo do lado da plataforma. Recusar o que não se sabe é pior
  * que deixar o provedor responder — ele é a autoridade, não este espelho.
  */
+function extractHeaderFallback(components: unknown, saved?: Record<string, string>): string | null {
+  if (saved?.["header:1"]?.trim()) return saved["header:1"].trim();
+  if (!Array.isArray(components)) return null;
+  const header = components.find(
+    (c) => (c?.type ?? "").toUpperCase() === "HEADER" && (c?.format ?? "").toUpperCase() === "IMAGE",
+  );
+  const handles = header?.example?.header_handle;
+  return Array.isArray(handles) && typeof handles[0] === "string" ? handles[0].trim() : null;
+}
+
 export async function conferirDefinicao(
   db: SupabaseClient,
   pedido: PedidoDeDefinicao,
@@ -74,7 +84,7 @@ export async function conferirDefinicao(
 
   let q = db
     .from("meta_templates")
-    .select("name, language, status, contract_hash, components, parameter_format")
+    .select("name, language, status, contract_hash, components, parameter_format, saved_values")
     .eq("organization_id", pedido.organizationId)
     .eq("name", pedido.name)
     .eq("language", pedido.language);
@@ -94,6 +104,7 @@ export async function conferirDefinicao(
     contract_hash: string;
     components: unknown;
     parameter_format?: string;
+    saved_values?: Record<string, string>;
   } | null;
 
   // Não espelhada: deixa passar. Ver o cabeçalho.
@@ -127,6 +138,12 @@ export async function conferirDefinicao(
     parameter_format: linha.parameter_format,
     components: linha.components as Parameters<typeof deriveTemplateContract>[0]["components"],
   });
+
+  if (!pedido.values["header:1"]) {
+    const fallback = extractHeaderFallback(linha.components, linha.saved_values);
+    if (fallback) pedido.values["header:1"] = fallback;
+  }
+
   const faltando = missingSlots(contrato, pedido.values);
 
   if (faltando.length > 0) {

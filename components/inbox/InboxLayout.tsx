@@ -509,6 +509,7 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
                 conversationId={selectedConversation.id}
                 provider={selectedConversation.channel_sessions?.provider ?? null}
                 motivo={motivoDaJanela}
+                contactName={selectedConversation.contacts?.name ?? null}
               />
             )}
             <Composer

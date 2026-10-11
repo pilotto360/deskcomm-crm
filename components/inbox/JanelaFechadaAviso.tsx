@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useT } from "@/hooks/i18n/useT";
 
@@ -12,70 +12,88 @@ import { fonteDeTemplates, rotaDeTemplates } from "@/lib/channels/templates-font
 import { lerConteudo } from "@/lib/channels/template-conteudo";
 import { cn } from "@/lib/utils";
 
-/**
- * A janela fechou — e aqui está o caminho de volta.
- *
- * ─── Por que barrar sem oferecer saída não serve ────────────────────────────
- *
- * O commit anterior barrou o texto livre fora das 24h, que era o pedido. Só que
- * barrar sem oferecer o modelo deixa o operador SEM caminho: ele vê "só modelo
- * aprovado sai daqui" e não tem como mandar um. A plataforma do parceiro faz
- * exatamente isto na mesma situação — barra o texto e abre o seletor.
- *
- * ─── Só as APROVADAS ────────────────────────────────────────────────────────
- *
- * Listar uma em revisão ou reprovada seria oferecer um caminho que falha no
- * clique. Quem quiser criar ou acompanhar revisão tem a tela de Conexões; aqui
- * o único objetivo é reabrir a conversa agora.
- *
- * ─── O que este componente NÃO faz ──────────────────────────────────────────
- *
- * Não preenche `{{1}}`, `{{2}}`. Modelo com parâmetro é oferecido, mas o envio
- * vai com os valores vazios — e a plataforma recusa. Preencher direito exige a
- * tela de variáveis (que existe em Conexões) trazida para cá, com preview por
- * modelo. Por isso o seletor MARCA quais pedem parâmetro, em vez de escondê-los
- * (esconder faria o operador procurar um modelo que existe e não aparece).
- */
+interface ModeloSlot {
+  key: string;
+  expects: string;
+  onde: string;
+}
+
 interface ModeloAprovado {
   name: string;
   language: string;
   status: string;
-  slots?: unknown[];
-  /** A definição aprovada. É de onde sai o texto que vai no `body` do envio. */
+  slots?: ModeloSlot[];
   components?: unknown[];
+  saved_values?: Record<string, string>;
 }
 
-/**
- * O texto da definição aprovada, que vai no `body` do envio.
- *
- * Cai para o nome do modelo quando a definição não trouxer corpo: um `body`
- * vazio reprovaria no mesmo schema que este conserto existe para satisfazer, e
- * a conversa mostraria uma bolha em branco. O nome é pior que o texto e melhor
- * que nada — e só acontece em definição sem BODY, que a plataforma não aprova.
- */
-function textoDoModelo(modelo: ModeloAprovado): string {
-  return lerConteudo(modelo.components ?? []).body?.trim() || modelo.name;
+function extractHeaderExample(components?: unknown[]): string | null {
+  if (!Array.isArray(components)) return null;
+  const header = components.find(
+    (c) =>
+      typeof c === "object" &&
+      c !== null &&
+      "type" in c &&
+      String((c as Record<string, unknown>).type).toUpperCase() === "HEADER" &&
+      String((c as Record<string, unknown>).format).toUpperCase() === "IMAGE",
+  ) as Record<string, unknown> | undefined;
+  const example = header?.example as Record<string, unknown> | undefined;
+  const handles = example?.header_handle;
+  return Array.isArray(handles) && typeof handles[0] === "string" ? handles[0].trim() : null;
+}
+
+function textoDoModelo(modelo: ModeloAprovado, valores?: Record<string, string>): string {
+  let body = lerConteudo(modelo.components ?? []).body?.trim() || modelo.name;
+  if (valores) {
+    for (const [k, v] of Object.entries(valores)) {
+      if (v) body = body.replaceAll(`{{${k}}}`, v);
+    }
+  }
+  return body;
+}
+
+function computeInitialValues(
+  atual: ModeloAprovado,
+  contactName?: string | null,
+): Record<string, string> {
+  const initial: Record<string, string> = {};
+  const firstName = contactName ? contactName.trim().split(/\s+/)[0] : "";
+  const headerHandle = extractHeaderExample(atual.components);
+
+  for (const s of atual.slots ?? []) {
+    if (s.expects === "image") {
+      const img = atual.saved_values?.["header:1"] || headerHandle || "";
+      initial[s.key] = img;
+      initial[`header:${s.key}`] = img;
+    } else if (s.expects === "text") {
+      if (s.key === "primeiro_nome" || s.key === "nome" || s.key === "1") {
+        initial[s.key] = firstName;
+      }
+    }
+  }
+  return initial;
+}
+
+interface JanelaFechadaAvisoProps {
+  conversationId: string;
+  provider: string | null;
+  motivo: string;
+  contactName?: string | null;
 }
 
 export function JanelaFechadaAviso({
   conversationId,
   provider,
   motivo,
-}: {
-  conversationId: string;
-  /** Decide de ONDE vêm as definições. A tela não interpreta este valor. */
-  provider: string | null;
-  motivo: string;
-}) {
+  contactName,
+}: JanelaFechadaAvisoProps) {
   const t = useT();
   const send = useSendMessage();
   const [escolhido, setEscolhido] = useState("");
+  const [valores, setValores] = useState<Record<string, string>>({});
 
   const fonte = fonteDeTemplates(provider);
   const { data } = useQuery({
-    // A chave inclui a fonte: sem isso, trocar de conversa entre canais serviria
-    // a lista em cache do canal anterior, e o operador mandaria um modelo que
-    // não existe na conta desta conversa.
     queryKey: ["templates-da-conversa", fonte],
     enabled: fonte !== null,
     queryFn: async () =>
@@ -89,7 +107,20 @@ export function JanelaFechadaAviso({
   );
 
   const atual = aprovados.find((tpl) => `${tpl.name}|${tpl.language}` === escolhido) ?? null;
-  const pedeParametros = (atual?.slots?.length ?? 0) > 0;
+  const slotsObrigatorios = atual?.slots ?? [];
+
+  useEffect(() => {
+    if (!atual) {
+      setValores({});
+      return;
+    }
+    setValores(computeInitialValues(atual, contactName));
+  }, [atual, contactName]);
+
+  const faltando = slotsObrigatorios.some((s) => {
+    const val = valores[s.key] || valores[`header:${s.key}`] || "";
+    return !val.trim();
+  });
 
   function enviar() {
     if (!atual) return;
@@ -99,22 +130,13 @@ export function JanelaFechadaAviso({
         type: "template",
         template_name: atual.name,
         template_language: atual.language,
-        // ─── O `body` NÃO é decorativo: sem ele o envio nem sai ──────────────
-        //
-        // `sendMessageSchema` exige `body`, `media_url` ou `media_storage_path`.
-        // A primeira versão desta tela mandava só o nome do modelo, e o pedido
-        // morria em 422 ANTES de tocar o transporte — o seletor aparecia, o
-        // operador escolhia, e nada acontecia. Com a janela fechada esta é a
-        // única saída que ele tem, então o botão que não envia é o pior lugar
-        // possível para um defeito silencioso.
-        //
-        // O texto renderizado é também o que a conversa mostra depois: é o
-        // mesmo caminho que o agente já usa quando manda modelo.
-        body: textoDoModelo(atual),
+        template_values: valores,
+        body: textoDoModelo(atual, valores),
       },
       {
         onSuccess: () => {
           setEscolhido("");
+          setValores({});
           toast.success(t("Modelo enviado — a janela reabre quando o cliente responder."));
         },
         onError: (e: unknown) =>
@@ -130,45 +152,75 @@ export function JanelaFechadaAviso({
       <p className="mb-2 text-xs text-amber-900 dark:text-amber-200">{motivo}</p>
 
       {aprovados.length === 0 ? (
-        // Sem modelo aprovado não há saída por aqui, e dizer isso é melhor que
-        // um seletor vazio que se lê como "ainda não carregou".
         <p className="text-xs text-amber-900/80 dark:text-amber-200/80">
           {t("Nenhum modelo aprovado ainda. Crie um em")} <strong>{t("Conexões → Templates")}</strong>{" "}
           {t("e envie quando a plataforma aprovar.")}
         </p>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            value={escolhido}
-            onChange={(e) => setEscolhido(e.target.value)}
-            disabled={send.isPending}
-            aria-label={t("Modelo aprovado")}
-            className={cn(
-              "h-9 min-w-[16rem] flex-1 rounded-md border border-input bg-background px-2 text-sm",
-              "focus:outline-hidden focus:ring-1 focus:ring-ring",
-            )}
-          >
-            <option value="">{t("Escolha um modelo aprovado…")}</option>
-            {aprovados.map((tpl) => (
-              <option key={`${tpl.name}|${tpl.language}`} value={`${tpl.name}|${tpl.language}`}>
-                {tpl.name} ({tpl.language})
-                {(tpl.slots?.length ?? 0) > 0 ? ` · ${tpl.slots!.length} ${t("parâmetro(s)")}` : ""}
-              </option>
-            ))}
-          </select>
-          <Button type="button" size="sm" onClick={enviar} disabled={!atual || send.isPending}>
-            {send.isPending ? t("Enviando…") : t("Enviar modelo")}
-          </Button>
-        </div>
-      )}
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={escolhido}
+              onChange={(e) => setEscolhido(e.target.value)}
+              disabled={send.isPending}
+              aria-label={t("Modelo aprovado")}
+              className={cn(
+                "h-9 min-w-[16rem] flex-1 rounded-md border border-input bg-background px-2 text-sm",
+                "focus:outline-hidden focus:ring-1 focus:ring-ring",
+              )}
+            >
+              <option value="">{t("Escolha um modelo aprovado…")}</option>
+              {aprovados.map((tpl) => (
+                <option key={`${tpl.name}|${tpl.language}`} value={`${tpl.name}|${tpl.language}`}>
+                  {tpl.name} ({tpl.language})
+                  {(tpl.slots?.length ?? 0) > 0 ? ` · ${tpl.slots!.length} ${t("parâmetro(s)")}` : ""}
+                </option>
+              ))}
+            </select>
+            <Button
+              type="button"
+              size="sm"
+              onClick={enviar}
+              disabled={!atual || send.isPending || faltando}
+            >
+              {send.isPending ? t("Enviando…") : t("Enviar modelo")}
+            </Button>
+          </div>
 
-      {pedeParametros && (
-        // Avisa ANTES do clique: este modelo precisa de valores e este seletor
-        // ainda não os coleta, então o envio vai falhar na plataforma.
-        <p className="mt-2 text-[11px] text-amber-900/80 dark:text-amber-200/80">
-          {t("Este modelo pede")} {atual?.slots?.length} {t("valor(es) e ainda não dá para preenchê-los aqui — envie por")}{" "}
-          <strong>{t("Conexões → Templates")}</strong>, {t("ou escolha um modelo sem parâmetros.")}
-        </p>
+          {atual && slotsObrigatorios.length > 0 && (
+            <div className="mt-2 flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-100/40 p-2 dark:border-amber-800 dark:bg-amber-900/20">
+              <p className="text-xs font-semibold text-amber-900 dark:text-amber-200">
+                {t("Parâmetros do modelo:")}
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {slotsObrigatorios.map((slot) => {
+                  const val = valores[slot.key] ?? valores[`header:${slot.key}`] ?? "";
+                  return (
+                    <div key={slot.key} className="flex flex-col gap-1">
+                      <label className="text-[11px] font-medium text-amber-900 dark:text-amber-200">
+                        {slot.onde} ({slot.key}):
+                      </label>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setValores((prev) => ({
+                            ...prev,
+                            [slot.key]: v,
+                            ...(slot.expects === "image" ? { [`header:${slot.key}`]: v } : {}),
+                          }));
+                        }}
+                        placeholder={slot.expects === "image" ? "https://..." : t("Digite o valor...")}
+                        className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

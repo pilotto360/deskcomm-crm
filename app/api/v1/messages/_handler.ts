@@ -132,6 +132,20 @@ async function removerEcoDoProprioEnvio(
   }
 }
 
+function resolveEffectiveTemplateValues(
+  rawValues: Record<string, string> | undefined,
+  contactName: string | null | undefined,
+): Record<string, string> {
+  const values = { ...(rawValues ?? {}) };
+  const firstName = contactName ? contactName.trim().split(/\s+/)[0] : null;
+  if (firstName) {
+    if (!values["primeiro_nome"]) values["primeiro_nome"] = firstName;
+    if (!values["nome"]) values["nome"] = firstName;
+    if (!values["1"]) values["1"] = firstName;
+  }
+  return values;
+}
+
 /**
  * De quem é esta linha, no vocabulário de `messages.sent_via`.
  *
@@ -375,7 +389,7 @@ export async function sendMessageHandler(
   // envio com 42703. Sem a coluna, nada está arquivado — e a consulta sem ela é a
   // consulta certa (ver lib/channels/archived).
   const convSelect = (comArchived: boolean) =>
-    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(phone_number, wa_identity, wa_lid, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
+    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(name, phone_number, wa_identity, wa_lid, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
   //
   // O filtro por `organization_id` NÃO é redundância com a RLS — é a única
   // proteção que existe na metade dos chamadores. Este handler é a porta de
@@ -787,6 +801,9 @@ export async function sendMessageHandler(
         // característica do transporte. O caminho de baixo já conferia; o
         // adapter postava direto, e um parâmetro a mais virava `400` cru em vez
         // de "falta o valor {{2}}".
+        const contactName = (c.contacts as { name?: string | null })?.name;
+        const effectiveValues = resolveEffectiveTemplateValues(input.template_values, contactName);
+
         await conferirDefinicao(supabase, {
           organizationId: ctx.organization_id,
           // A conexão dona da definição: dois números têm modelos diferentes, e
@@ -795,7 +812,7 @@ export async function sendMessageHandler(
           channelSessionId: c.channel_session_id ?? null,
           name: input.template_name ?? "",
           language: input.template_language ?? "",
-          values: input.template_values ?? {},
+          values: effectiveValues,
         });
 
         await checkBoundary();
@@ -809,7 +826,7 @@ export async function sendMessageHandler(
                 providerConversationId: c.provider_conversation_id,
                 name: input.template_name ?? "",
                 language: input.template_language ?? "",
-                values: input.template_values ?? {},
+                values: effectiveValues,
               })
             ).externalId
           : await sendTemplateForSession(supabase, {
@@ -822,7 +839,7 @@ export async function sendMessageHandler(
               to: chatId,
               name: input.template_name ?? "",
               language: input.template_language ?? "",
-              values: input.template_values ?? {},
+              values: effectiveValues,
             });
       } else if (input.media_storage_path) {
         // Storage-first: signed URL curta só pro canal baixar (nunca base64).

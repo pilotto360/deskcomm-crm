@@ -534,6 +534,23 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
 
 ---
 
+## Features
+
+### Disparo de Modelos Aprovados no WhatsApp (Templates)
+- **Descrição:** Envio de modelos de mensagens aprovados pela Meta (canais oficial e parceiros intermediados) para reabertura de janela de 24 horas ou comunicação ativa.
+- **Fluxo:**
+  1. Na conversa (com janela de 24h fechada), o operador seleciona o modelo aprovado desejado no aviso de janela.
+  2. O formulário exibe os campos para cada parâmetro exigido pelo modelo (cabeçalho de imagem, variáveis de texto).
+  3. Variáveis de nome (`primeiro_nome`, `nome`) são pré-preenchidas automaticamente com o nome do contato cadastrado, e imagens de cabeçalho são pré-carregadas com o exemplo aprovado da Meta ou valor salvo.
+  4. O operador confirma o envio, e o sistema valida o contrato do modelo antes de enviar pelo canal conectado.
+
+### Correções Recentes (Fixes)
+- **Envio de Templates com Parâmetros Nomeados e Cabeçalho de Mídia:**
+  - **O que foi corrigido:** O adapter do provedor intermediado (Omnique) descartava parâmetros nomeados de templates (como `{{primeiro_nome}}`) e omitia o componente de cabeçalho de mídia exigido pela Meta. Adicionalmente, a rota de listagem de templates de parceiro não serializava os slots de parâmetros, permitindo envio sem valores que falhava na validação de pré-voo (`template_missing_values`).
+  - **Comportamento esperado após a correção:** A listagem expõe os slots do modelo, a interface de janela fechada exibe os campos e pré-preenche as variáveis automaticamente, o pré-voo aceita os valores e a imagem de exemplo aprovada, e o adapter entrega a mensagem via WhatsApp com parâmetros e cabeçalho devidamente formatados.
+
+---
+
 ## 📜 Licença
 
 Distribuído sob a licença **MIT** — veja [`LICENSE`](LICENSE). Você pode usar, modificar

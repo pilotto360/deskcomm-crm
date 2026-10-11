@@ -159,6 +159,36 @@ describe("omniqueAdapter", () => {
     expect(body.template.language).toBe("pt_BR");
     expect(body.template.components[0].parameters[0].text).toBe("Maria");
   });
+
+  it("envia template com parâmetros nomeados e cabeçalho de imagem", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "msg_tmpl_named_888" }),
+    });
+
+    const res = await omniqueAdapter.sendTemplate!({
+      organizationId: ORG,
+      sessionRef: "inst_123",
+      to: "+5519999998888",
+      name: "campanha_panetone",
+      language: "pt_BR",
+      values: {
+        "header:1": "https://img.test/header.png",
+        primeiro_nome: "Roberto",
+      },
+    });
+
+    expect(res.externalId).toBe("msg_tmpl_named_888");
+    const call = fetchMock.mock.calls[0] as [string, RequestInit];
+    const body = JSON.parse(call[1].body as string);
+    expect(body.template.name).toBe("campanha_panetone");
+    expect(body.template.components[0].type).toBe("header");
+    expect(body.template.components[0].parameters[0].image.link).toBe("https://img.test/header.png");
+    expect(body.template.components[1].type).toBe("body");
+    expect(body.template.components[1].parameters[0].parameter_name).toBe("primeiro_nome");
+    expect(body.template.components[1].parameters[0].text).toBe("Roberto");
+  });
 });
 
 describe("webhook Omnique", () => {

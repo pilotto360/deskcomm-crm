@@ -8,20 +8,82 @@ import type {
   RecipientInput,
 } from "../types";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { deriveTemplateContract } from "../meta/template-contract";
+import { buildComponents } from "../meta/build-components";
+
 function toE164Digits(raw: string): string {
   return raw.replace(/\D/g, "");
 }
 
-function extractOrderedValues(values: Record<string, string>): string[] {
-  return Object.keys(values)
-    .filter((k) => /^\d+$/.test(k))
-    .sort((a, b) => Number(a) - Number(b))
-    .map((k) => values[k] ?? "");
+function extractHeaderExample(components: unknown): string | null {
+  if (!Array.isArray(components)) return null;
+  const header = components.find(
+    (c) => (c?.type ?? "").toUpperCase() === "HEADER" && (c?.format ?? "").toUpperCase() === "IMAGE",
+  );
+  const handles = header?.example?.header_handle;
+  return Array.isArray(handles) && typeof handles[0] === "string" ? handles[0].trim() : null;
 }
 
-function buildTemplateBody(params: string[]): unknown[] {
-  if (params.length === 0) return [];
-  return [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }];
+function buildFallbackComponents(values: Record<string, string>): unknown[] {
+  const comps: unknown[] = [];
+  const headerUrl = values["header:1"] || values["header"];
+  if (headerUrl) {
+    comps.push({ type: "header", parameters: [{ type: "image", image: { link: headerUrl } }] });
+  }
+  const bodyParams = Object.entries(values)
+    .filter(([k]) => !k.startsWith("header"))
+    .map(([k, text]) => (/^\d+$/.test(k) ? { type: "text", text } : { type: "text", parameter_name: k, text }));
+  if (bodyParams.length > 0) {
+    comps.push({ type: "body", parameters: bodyParams });
+  }
+  return comps;
+}
+
+interface ResolveTemplateInput {
+  organizationId: string;
+  name: string;
+  language: string;
+  values: Record<string, string>;
+}
+
+async function resolveOmniqueComponents(
+  admin: SupabaseClient,
+  input: ResolveTemplateInput,
+): Promise<unknown[]> {
+  if (typeof admin?.from !== "function") {
+    return buildFallbackComponents(input.values);
+  }
+
+  const { data: tpl } = await admin
+    .from("meta_templates")
+    .select("name, language, parameter_format, components, saved_values")
+    .eq("organization_id", input.organizationId)
+    .eq("name", input.name)
+    .eq("language", input.language)
+    .maybeSingle();
+
+  if (!tpl) return buildFallbackComponents(input.values);
+
+  const saved = (tpl.saved_values as Record<string, string> | null) ?? {};
+  const merged: Record<string, string> = { ...saved, ...input.values };
+  if (!merged["header:1"]) {
+    const fallbackHeader = extractHeaderExample(tpl.components);
+    if (fallbackHeader) merged["header:1"] = fallbackHeader;
+  }
+
+  const contract = deriveTemplateContract({
+    name: tpl.name,
+    language: tpl.language,
+    parameter_format: tpl.parameter_format,
+    components: tpl.components as never,
+  });
+
+  try {
+    return buildComponents(contract, merged);
+  } catch {
+    return buildFallbackComponents(merged);
+  }
 }
 
 function buildPayload(envelope: OutboundEnvelope, recipient: string): Record<string, unknown> {
@@ -118,7 +180,12 @@ export const omniqueAdapter: ChannelAdapter = {
     if (!creds) throw new Error("omnique_not_configured: sem credencial configurada.");
 
     const recipient = toE164Digits(input.to);
-    const params = extractOrderedValues(input.values);
+    const components = await resolveOmniqueComponents(admin, {
+      organizationId: input.organizationId,
+      name: input.name,
+      language: input.language || "pt_BR",
+      values: input.values,
+    });
     await input.beforeSend?.();
 
     const payload = {
@@ -127,7 +194,7 @@ export const omniqueAdapter: ChannelAdapter = {
       template: {
         name: input.name,
         language: input.language || "pt_BR",
-        components: buildTemplateBody(params),
+        components,
       },
     };
     return postOmnique(creds.baseUrl, creds.apiKey, payload);

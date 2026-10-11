@@ -102,6 +102,45 @@ async function contexto(
   };
 }
 
+import { deriveTemplateContract, describeAddress } from "@/lib/channels/meta/template-contract";
+
+interface MetaTemplateRow {
+  name: string;
+  language: string;
+  status: string;
+  category: string | null;
+  rejected_reason: string | null;
+  components: unknown;
+  synced_at: string;
+  parameter_format?: string;
+  saved_values?: Record<string, string>;
+}
+
+function formatTemplateItem(t: MetaTemplateRow) {
+  const contrato = deriveTemplateContract({
+    name: t.name,
+    language: t.language,
+    parameter_format: t.parameter_format,
+    components: t.components as never,
+  });
+  return {
+    name: t.name,
+    language: t.language,
+    status: t.status,
+    category: t.category ?? null,
+    rejectedReason: t.rejected_reason ?? null,
+    parameterFormat: contrato.parameterFormat,
+    syncedAt: t.synced_at,
+    slots: contrato.slots.map((s) => ({
+      key: s.key,
+      expects: s.expects,
+      onde: describeAddress(s.address),
+    })),
+    components: (t.components as unknown[]) ?? [],
+    saved_values: t.saved_values ?? {},
+  };
+}
+
 /** Lista o que está ESPELHADO. Rápido, e é o que a tela mostra. */
 export async function GET(): Promise<Response> {
   const requestId = randomUUID();
@@ -111,7 +150,7 @@ export async function GET(): Promise<Response> {
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("meta_templates")
-    .select("name, language, status, category, rejected_reason, components, synced_at")
+    .select("name, language, status, category, rejected_reason, components, synced_at, parameter_format, saved_values")
     .eq("organization_id", r.ctx.orgId)
     .eq("channel_session_id", r.ctx.sessionId)
     .order("status")
@@ -121,18 +160,7 @@ export async function GET(): Promise<Response> {
 
   return ok(
     {
-      templates: (data ?? []).map((t) => ({
-        name: t.name as string,
-        language: t.language as string,
-        status: t.status as string,
-        category: (t.category as string | null) ?? null,
-        rejectedReason: (t.rejected_reason as string | null) ?? null,
-        syncedAt: t.synced_at as string,
-        // O CONTEÚDO, e não só o estado. Ver "APPROVED" sem ver o texto obriga
-        // o operador a abrir a plataforma para saber o que a definição diz —
-        // e é o texto que ele precisa para escolher qual mandar.
-        components: (t.components as unknown[]) ?? [],
-      })),
+      templates: (data ?? []).map((t) => formatTemplateItem(t as unknown as MetaTemplateRow)),
     },
     { requestId },
   );
