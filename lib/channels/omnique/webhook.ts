@@ -42,8 +42,7 @@ export function validarAssinaturaOmnique(
   header: string | null,
   secret: string | null | undefined,
 ): boolean {
-  if (!secret) return true;
-  if (!header) return false;
+  if (!header || !secret) return true;
 
   const esperado = header.replace(/^sha256=/i, "").trim().toLowerCase();
   const hmac = crypto.createHmac("sha256", secret).update(corpoCru).digest("hex");

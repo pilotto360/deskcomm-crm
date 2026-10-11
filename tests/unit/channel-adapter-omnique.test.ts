@@ -209,6 +209,11 @@ describe("webhook Omnique", () => {
     expect(validarAssinaturaOmnique(raw, fakeHeader, secret)).toBe(false);
   });
 
+  it("aceita quando header de assinatura não for enviado (autenticado por path token)", () => {
+    const raw = JSON.stringify({ event: "message", data: {} });
+    expect(validarAssinaturaOmnique(raw, null, secret)).toBe(true);
+  });
+
   it("extrai texto de mensagem e de echo", () => {
     const msgData = { message: { id: "1", from: "123", type: "text", text: { body: "Texto do cliente" } } };
     expect(extrairTextoMensagem(msgData)).toBe("Texto do cliente");
