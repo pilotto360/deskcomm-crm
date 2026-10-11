@@ -266,12 +266,16 @@ async function omniqueInbound(
     const metaUrl = typeof input.session.metadata?.forward_webhook_url === "string"
       ? input.session.metadata.forward_webhook_url.trim()
       : undefined;
+    const metaSecret = typeof input.session.metadata?.omnique_webhook_secret === "string"
+      ? input.session.metadata.omnique_webhook_secret.trim()
+      : input.secret;
     await forwardOmniqueWebhook({
       rawBody: input.rawBody,
       signature,
       conversationId: result.conversationId,
       messageId: result.messageId,
       forwardUrl: metaUrl,
+      secret: metaSecret,
     });
   }
 

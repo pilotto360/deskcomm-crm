@@ -1,6 +1,4 @@
-/**
- * Repasse de webhook Omnique para agentes externos (ex: LangGraph).
- */
+import crypto from "node:crypto";
 import { logger } from "@/lib/logger";
 
 export interface ForwardOmniqueWebhookParams {
@@ -9,6 +7,7 @@ export interface ForwardOmniqueWebhookParams {
   conversationId?: string;
   messageId?: string;
   forwardUrl?: string;
+  secret?: string | null;
 }
 
 export interface ForwardResult {
@@ -25,8 +24,14 @@ function buildForwardHeaders(params: ForwardOmniqueWebhookParams): Record<string
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
-  if (params.signature) {
-    headers["x-omnique-signature-256"] = params.signature;
+  let sig = params.signature;
+  const secret = params.secret || process.env.OMNIQUE_WEBHOOK_SECRET;
+  if (!sig && secret && params.rawBody) {
+    const hmac = crypto.createHmac("sha256", secret).update(params.rawBody).digest("hex");
+    sig = `sha256=${hmac}`;
+  }
+  if (sig) {
+    headers["x-omnique-signature-256"] = sig;
   }
   if (params.conversationId) {
     headers["x-deskcomm-conversation-id"] = params.conversationId;
