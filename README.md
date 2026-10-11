@@ -299,6 +299,15 @@ Por baixo, cada evento vira uma linha em `event_log` — nenhum trigger de banco
   4. Para criar novos modelos, clique em **Criar modelo**, preencha nome, idioma, categoria (Utilidade, Marketing, etc.) e texto com variáveis `{{1}}`, e envie para aprovação da Meta.
   5. No Inbox, ao responder conversas fora da janela de 24 horas do número Omnique, o seletor de templates exibe os modelos aprovados para envio imediato via `POST /chat-send`.
 
+### Repasse de Webhook Omnique para Agente Externo (LangGraph)
+- **Descrição:** Permite encaminhar webhooks de mensagens recebidas da Omnique para um agente externo (como LangGraph rodando em FastAPI), preservando a ingestão nativa no CRM, histórico no Inbox e prevenindo loops de repasse via filtro de eco.
+- **Fluxo:**
+  1. No `.env.local`, defina a variável `OMNIQUE_FORWARD_WEBHOOK_URL` com a URL do endpoint do agente externo (ex.: `https://seu-agente.com/webhooks/omnique`).
+  2. A Omnique envia os eventos de mensagens para a URL de webhook do DeskcommCRM (`/api/v1/webhooks/channel/[token]`).
+  3. O DeskcommCRM valida a assinatura HMAC (`x-omnique-signature-256`), ingere a mensagem no banco de dados e atualiza a conversa no Inbox para os atendentes humanos.
+  4. Caso o evento seja uma mensagem recebida de cliente (não sendo um eco de envio), o CRM dispara um `POST` assíncrono para a URL configurada repassando o corpo bruto, os cabeçalhos de assinatura e metadados adicionais (`x-deskcomm-conversation-id`, `x-deskcomm-message-id`).
+  5. O agente externo processa a intenção, consulta histórico ou dispara ações via MCP (`/api/mcp`) e responde o cliente.
+
 ---
 
 ## 🖥️ O que você opera (as telas)

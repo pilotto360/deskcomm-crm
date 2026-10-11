@@ -228,6 +228,22 @@ async function zernioInbound(
   return { ok: true, body: { ...r } };
 }
 
+import { forwardOmniqueWebhook } from "./omnique/forward";
+
+function parseOmniqueEvent(
+  rawBody: string,
+): { ok: true; event: OmniqueInboundEvent } | { ok: false; code: string; message: string } {
+  try {
+    const event = JSON.parse(rawBody) as OmniqueInboundEvent;
+    if (!event || typeof event !== "object" || !event.event) {
+      return { ok: false, code: "contrato_violado", message: "evento sem campo event" };
+    }
+    return { ok: true, event };
+  } catch {
+    return { ok: false, code: "invalid_json", message: "invalid_json" };
+  }
+}
+
 async function omniqueInbound(
   admin: SupabaseClient,
   input: InboundWebhookInput,
@@ -237,21 +253,22 @@ async function omniqueInbound(
     return { ok: false, code: "unauthorized", message: "bad_signature" };
   }
 
-  let event: OmniqueInboundEvent;
-  try {
-    event = JSON.parse(input.rawBody) as OmniqueInboundEvent;
-  } catch {
-    return { ok: false, code: "invalid_json", message: "invalid_json" };
-  }
+  const parsed = parseOmniqueEvent(input.rawBody);
+  if (!parsed.ok) return parsed;
 
-  if (!event || typeof event !== "object" || !event.event) {
-    return { ok: false, code: "contrato_violado", message: "evento sem campo event" };
-  }
-
-  const result = await ingestOmniqueEvent(admin, event, {
+  const result = await ingestOmniqueEvent(admin, parsed.event, {
     id: input.session.id,
     organization_id: input.session.organization_id,
   });
+
+  if (!parsed.event.data.echo && result.status === "ingested") {
+    await forwardOmniqueWebhook({
+      rawBody: input.rawBody,
+      signature,
+      conversationId: result.conversationId,
+      messageId: result.messageId,
+    });
+  }
 
   return { ok: true, body: { ...result } };
 }
