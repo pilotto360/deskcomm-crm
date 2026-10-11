@@ -44,7 +44,7 @@ const FONTE: Record<ProviderDeMensagem, FonteDeTemplates | null> = {
   meta_cloud: "oficial",
   zernio: "parceiro",
   zernio_social: null,
-  omnique: null,
+  omnique: "parceiro",
 };
 
 /** `null` quando este canal não trabalha com definições aprovadas. */

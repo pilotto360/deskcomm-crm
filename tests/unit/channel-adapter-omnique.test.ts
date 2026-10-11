@@ -69,7 +69,7 @@ describe("omniqueAdapter", () => {
       to: "+5519999998888",
       kind: "image",
       body: "Foto de exemplo",
-      media: { url: "https://cdn.exemplo.com/foto.jpg" },
+      media: { url: "https://cdn.exemplo.com/foto.jpg", mime: "image/jpeg" },
     });
 
     expect(res.externalId).toBe("media_888");
@@ -96,6 +96,68 @@ describe("omniqueAdapter", () => {
         body: "Teste",
       }),
     ).rejects.toThrow("omnique_send_failed: Número não possui WhatsApp");
+  });
+
+  it("lista templates aprovados via chat-manage templates.list", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        ok: true,
+        data: {
+          data: [
+            {
+              name: "confirmacao_pedido",
+              language: "pt_BR",
+              status: "APPROVED",
+              category: "UTILITY",
+              components: [{ type: "BODY", text: "Pedido confirmado" }],
+            },
+          ],
+        },
+      }),
+    });
+
+    const lista = await omniqueAdapter.templates!.list({
+      organizationId: ORG,
+      sessionRef: "inst_123",
+    });
+
+    expect(lista).toHaveLength(1);
+    expect(lista[0].name).toBe("confirmacao_pedido");
+    expect(lista[0].status).toBe("APPROVED");
+    expect(lista[0].language).toBe("pt_BR");
+
+    const call = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(call[0]).toBe("https://test.omnique.com.br/chat-manage");
+    const body = JSON.parse(call[1].body as string);
+    expect(body.action).toBe("templates.list");
+  });
+
+  it("envia template aprovado via sendTemplate", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ id: "msg_tmpl_999" }),
+    });
+
+    const res = await omniqueAdapter.sendTemplate!({
+      organizationId: ORG,
+      sessionRef: "inst_123",
+      to: "+5519999998888",
+      name: "confirmacao_pedido",
+      language: "pt_BR",
+      values: { "1": "Maria" },
+    });
+
+    expect(res.externalId).toBe("msg_tmpl_999");
+    const call = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(call[0]).toBe("https://test.omnique.com.br/chat-send");
+    const body = JSON.parse(call[1].body as string);
+    expect(body.type).toBe("template");
+    expect(body.template.name).toBe("confirmacao_pedido");
+    expect(body.template.language).toBe("pt_BR");
+    expect(body.template.components[0].parameters[0].text).toBe("Maria");
   });
 });
 

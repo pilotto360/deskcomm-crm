@@ -290,6 +290,15 @@ Por baixo, cada evento vira uma linha em `event_log` — nenhum trigger de banco
   5. O CRM gera a URL do Webhook (`/api/v1/webhooks/channel/[token]`) e o segredo de assinatura para configuração no painel da Omnique.
   6. Mensagens enviadas saem via `POST /chat-send` e eventos recebidos são validados via HMAC-SHA256 (`x-omnique-signature-256`) e ingeridos nas conversas e contatos.
 
+### Sincronização e Gestão de Templates de WhatsApp (Omnique)
+- **Descrição:** Permite listar, importar/sincronizar, criar e enviar modelos (templates HSM) aprovados na Meta diretamente através da conexão parceira da Omnique, espelhando-os em `meta_templates` para uso no Inbox fora da janela de 24 horas.
+- **Fluxo:**
+  1. No menu lateral, acesse **Conexões** e abra a aba **Provedor parceiro**.
+  2. Clique na sub-aba **Modelos do parceiro**.
+  3. Clique no botão **Sincronizar**: o CRM consulta a API da Omnique (`POST /chat-manage` com `action: "templates.list"`), baixa todos os templates cadastrados e aprovados na conta da Meta e faz o upsert na tabela `meta_templates`.
+  4. Para criar novos modelos, clique em **Criar modelo**, preencha nome, idioma, categoria (Utilidade, Marketing, etc.) e texto com variáveis `{{1}}`, e envie para aprovação da Meta.
+  5. No Inbox, ao responder conversas fora da janela de 24 horas do número Omnique, o seletor de templates exibe os modelos aprovados para envio imediato via `POST /chat-send`.
+
 ---
 
 ## 🖥️ O que você opera (as telas)

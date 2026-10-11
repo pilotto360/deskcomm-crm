@@ -1,13 +1,27 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveOmniqueCreds } from "../omnique/credentials";
+import { omniqueTemplateOps } from "../omnique/templates";
 import type {
   ChannelAdapter,
+  ChannelTenantScope,
   OutboundEnvelope,
   RecipientInput,
 } from "../types";
 
 function toE164Digits(raw: string): string {
   return raw.replace(/\D/g, "");
+}
+
+function extractOrderedValues(values: Record<string, string>): string[] {
+  return Object.keys(values)
+    .filter((k) => /^\d+$/.test(k))
+    .sort((a, b) => Number(a) - Number(b))
+    .map((k) => values[k] ?? "");
+}
+
+function buildTemplateBody(params: string[]): unknown[] {
+  if (params.length === 0) return [];
+  return [{ type: "body", parameters: params.map((text) => ({ type: "text", text })) }];
 }
 
 function buildPayload(envelope: OutboundEnvelope, recipient: string): Record<string, unknown> {
@@ -57,6 +71,7 @@ async function postOmnique(
 
 export const omniqueAdapter: ChannelAdapter = {
   provider: "omnique",
+  templates: omniqueTemplateOps,
 
   resolveRecipient(input: RecipientInput): string | null {
     if (input.isGroup) return null;
@@ -86,9 +101,42 @@ export const omniqueAdapter: ChannelAdapter = {
     return postOmnique(creds.baseUrl, creds.apiKey, payload);
   },
 
+  async sendTemplate(input: ChannelTenantScope & {
+    beforeSend?: () => Promise<void>;
+    sessionRef: string;
+    to: string;
+    providerConversationId?: string | null;
+    name: string;
+    language: string;
+    values: Record<string, string>;
+  }): Promise<{ externalId: string | null }> {
+    const admin = createAdminClient();
+    const creds = await resolveOmniqueCreds(admin, {
+      organizationId: input.organizationId,
+      instanceId: input.sessionRef,
+    });
+    if (!creds) throw new Error("omnique_not_configured: sem credencial configurada.");
+
+    const recipient = toE164Digits(input.to);
+    const params = extractOrderedValues(input.values);
+    await input.beforeSend?.();
+
+    const payload = {
+      to: recipient,
+      type: "template",
+      template: {
+        name: input.name,
+        language: input.language || "pt_BR",
+        components: buildTemplateBody(params),
+      },
+    };
+    return postOmnique(creds.baseUrl, creds.apiKey, payload);
+  },
+
   codes: {
     notConfigured: "omnique_not_configured",
     sendFailed: "omnique_send_failed",
     unknownError: "omnique_unknown_error",
   },
 };
+
