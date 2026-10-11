@@ -42,6 +42,7 @@ export async function forwardOmniqueWebhook(
 ): Promise<ForwardResult> {
   const targetUrl = resolveForwardUrl(params.forwardUrl);
   if (!targetUrl) {
+    logger.warn("omnique-forward: repasse ignorado — OMNIQUE_FORWARD_WEBHOOK_URL não configurada");
     return { forwarded: false };
   }
 
