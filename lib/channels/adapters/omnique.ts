@@ -47,6 +47,27 @@ interface ResolveTemplateInput {
   values: Record<string, string>;
 }
 
+import { isTemporaryMediaUrl, mirrorTemplateMedia } from "../template-media-mirror";
+
+interface HeaderMirrorTarget {
+  organizationId: string;
+  name: string;
+  url: string;
+}
+
+async function ensureMirroredHeader(
+  admin: SupabaseClient,
+  target: HeaderMirrorTarget,
+): Promise<string> {
+  if (!isTemporaryMediaUrl(target.url)) return target.url;
+  const mirrored = await mirrorTemplateMedia(admin, {
+    organizationId: target.organizationId,
+    templateName: target.name,
+    sourceUrl: target.url,
+  });
+  return mirrored ?? target.url;
+}
+
 async function resolveOmniqueComponents(
   admin: SupabaseClient,
   input: ResolveTemplateInput,
@@ -70,6 +91,14 @@ async function resolveOmniqueComponents(
   if (!merged["header:1"]) {
     const fallbackHeader = extractHeaderExample(tpl.components);
     if (fallbackHeader) merged["header:1"] = fallbackHeader;
+  }
+
+  if (merged["header:1"]) {
+    merged["header:1"] = await ensureMirroredHeader(admin, {
+      organizationId: input.organizationId,
+      name: input.name,
+      url: merged["header:1"],
+    });
   }
 
   const contract = deriveTemplateContract({

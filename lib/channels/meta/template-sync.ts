@@ -17,6 +17,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 import { hashContract } from "./contract-hash";
 import { normalizeRejectedReason as rejectedReason } from "./webhook";
+import { mirrorAndResolveTemplateHeader } from "../template-media-mirror";
 
 /**
  * O vocabulário que a Meta usa hoje. **A coluna `status` do banco NÃO tem CHECK e
@@ -55,6 +56,7 @@ export interface MetaTemplateRow {
   components: unknown;
   contract_hash: string;
   parameter_format: string;
+  saved_values?: Record<string, string>;
 }
 
 /** O que já existe no banco, na projeção mínima que o plano precisa. */
@@ -267,6 +269,17 @@ export async function syncTemplates(input: SyncInput): Promise<SyncCounts> {
   const now = new Date().toISOString();
 
   if (rows.length > 0) {
+    for (const r of rows) {
+      const { updatedSavedValues } = await mirrorAndResolveTemplateHeader(db, {
+        organizationId: input.organizationId,
+        templateName: r.name,
+        components: r.components,
+      });
+      if (updatedSavedValues["header:1"]) {
+        r.saved_values = updatedSavedValues;
+      }
+    }
+
     const { error } = await db
       .from("meta_templates")
       .upsert(

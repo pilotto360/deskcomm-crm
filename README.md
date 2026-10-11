@@ -544,10 +544,21 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
   3. Variáveis de nome (`primeiro_nome`, `nome`) são pré-preenchidas automaticamente com o nome do contato cadastrado, e imagens de cabeçalho são pré-carregadas com o exemplo aprovado da Meta ou valor salvo.
   4. O operador confirma o envio, e o sistema valida o contrato do modelo antes de enviar pelo canal conectado.
 
+### Espelhamento Automático de Mídias de Templates no Supabase Storage
+- **Descrição:** Download e persistência automática de arquivos de mídia (cabeçalhos de imagem, documentos e vídeos) aprovados na Meta para o bucket público `template-assets` no Supabase Storage, eliminando erros de download 403 Forbidden (`131053`) causados por URLs temporárias da CDN da Meta.
+- **Fluxo:**
+  1. Durante a sincronização de templates (canal oficial ou parceiro intermediado), o serviço inspeciona os componentes de cabeçalho (`IMAGE`, `DOCUMENT`, `VIDEO`).
+  2. Ao detectar URLs temporárias (`scontent.whatsapp.net`, `fbcdn.net`), o sistema realiza o download seguro e salva no bucket público `template-assets`.
+  3. A URL pública permanente é gravada em `saved_values["header:1"]` do template na tabela `meta_templates`.
+  4. Se um template for disparado com URL temporária pendente, o adapter do canal intercepta e espelha a mídia on-the-fly antes do envio.
+
 ### Correções Recentes (Fixes)
 - **Envio de Templates com Parâmetros Nomeados e Cabeçalho de Mídia:**
-  - **O que foi corrigido:** O adapter do provedor intermediado (Omnique) descartava parâmetros nomeados de templates (como `{{primeiro_nome}}`) e omitia o componente de cabeçalho de mídia exigido pela Meta. Adicionalmente, a rota de listagem de templates de parceiro não serializava os slots de parâmetros, permitindo envio sem valores que falhava na validação de pré-voo (`template_missing_values`).
+  - **O que foi corrigido:** O adapter do provedor intermediado descartava parâmetros nomeados de templates (como `{{primeiro_nome}}`) e omitia o componente de cabeçalho de mídia exigido pela Meta. Adicionalmente, a rota de listagem de templates de parceiro não serializava os slots de parâmetros, permitindo envio sem valores que falhava na validação de pré-voo (`template_missing_values`).
   - **Comportamento esperado após a correção:** A listagem expõe os slots do modelo, a interface de janela fechada exibe os campos e pré-preenche as variáveis automaticamente, o pré-voo aceita os valores e a imagem de exemplo aprovada, e o adapter entrega a mensagem via WhatsApp com parâmetros e cabeçalho devidamente formatados.
+- **Erro 403 Forbidden no Download de Mídia pela Meta (Código 131053):**
+  - **O que foi corrigido:** Disparos de templates com imagens apontando para links temporários da Meta (`scontent.whatsapp.net`) resultavam em erro `131053: Downloading media from weblink failed with http code 403, status message Forbidden`.
+  - **Comportamento esperado após a correção:** Todo cabeçalho de mídia é espelhado automaticamente no Supabase Storage público (`template-assets`), garantindo URL permanente acessível pela Meta e entrega bem-sucedida da mensagem.
 
 ---
 

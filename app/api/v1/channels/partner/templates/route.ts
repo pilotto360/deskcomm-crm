@@ -103,6 +103,7 @@ async function contexto(
 }
 
 import { deriveTemplateContract, describeAddress } from "@/lib/channels/meta/template-contract";
+import { mirrorAndResolveTemplateHeader } from "@/lib/channels/template-media-mirror";
 
 interface MetaTemplateRow {
   name: string;
@@ -233,6 +234,12 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     let gravadas = 0;
     for (const t of remotas) {
+      const { updatedSavedValues } = await mirrorAndResolveTemplateHeader(admin, {
+        organizationId: r.ctx.orgId,
+        templateName: t.name,
+        components: t.components,
+      });
+
       const { error } = await admin.from("meta_templates").upsert(
         {
           organization_id: r.ctx.orgId,
@@ -250,6 +257,7 @@ export async function POST(req: NextRequest): Promise<Response> {
           components: t.components,
           contract_hash: "",
           parameter_format: t.parameterFormat ?? "POSITIONAL",
+          saved_values: updatedSavedValues,
           synced_at: agora,
           updated_at: agora,
         },
