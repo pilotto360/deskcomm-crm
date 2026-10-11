@@ -42,6 +42,7 @@ import { useT } from "@/hooks/i18n/useT";
  * nenhuma" e "não consegui perguntar".
  */
 import { TemplateMappingEditor, type TemplateSlotInfo } from "./TemplateMappingEditor";
+import { deriveTemplateContract, describeAddress } from "@/lib/channels/meta/template-contract";
 
 interface TemplateParceiro {
   name: string;
@@ -53,6 +54,20 @@ interface TemplateParceiro {
   components: unknown[];
   slots?: TemplateSlotInfo[];
   saved_values?: Record<string, unknown>;
+}
+
+function extrairSlots(tpl: TemplateParceiro): TemplateSlotInfo[] {
+  if (tpl.slots && tpl.slots.length > 0) return tpl.slots;
+  const contrato = deriveTemplateContract({
+    name: tpl.name,
+    language: tpl.language,
+    components: tpl.components as never,
+  });
+  return contrato.slots.map((s) => ({
+    key: s.key,
+    expects: s.expects,
+    onde: describeAddress(s.address),
+  }));
 }
 
 const COR_DO_ESTADO: Record<string, string> = {
@@ -519,17 +534,21 @@ export function TemplatesParceiroClient() {
                         ))}
                       </div>
                     )}
-                    {tpl.slots && tpl.slots.length > 0 && (
-                      <div className="mt-2">
-                        <TemplateMappingEditor
-                          templateName={tpl.name}
-                          templateLanguage={tpl.language}
-                          slots={tpl.slots}
-                          savedValues={tpl.saved_values}
-                          onSaved={() => qc.invalidateQueries({ queryKey: ["partner-templates"] })}
-                        />
-                      </div>
-                    )}
+                    {(() => {
+                      const slotsDoTemplate = extrairSlots(tpl);
+                      if (slotsDoTemplate.length === 0) return null;
+                      return (
+                        <div className="mt-2">
+                          <TemplateMappingEditor
+                            templateName={tpl.name}
+                            templateLanguage={tpl.language}
+                            slots={slotsDoTemplate}
+                            savedValues={tpl.saved_values}
+                            onSaved={() => qc.invalidateQueries({ queryKey: ["partner-templates"] })}
+                          />
+                        </div>
+                      );
+                    })()}
                     <p className="text-[10px] text-muted-foreground">
                       {t("Sincronizado em")} {new Date(tpl.syncedAt).toLocaleString(tagDoIdioma)}
                     </p>

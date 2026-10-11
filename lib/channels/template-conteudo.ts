@@ -131,8 +131,10 @@ export function lerConteudo(components: unknown): ConteudoDaDefinicao {
  * plataforma numera por posição e recusa a lista com buracos.
  */
 export function contarVariaveis(texto: string): number {
-  const achados = [...texto.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => Number(m[1]));
-  return achados.length === 0 ? 0 : Math.max(...achados);
+  const numericos = [...texto.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map((m) => Number(m[1]));
+  if (numericos.length > 0) return Math.max(...numericos);
+  const nomeados = new Set([...texto.matchAll(/\{\{\s*(\w+)\s*\}\}/g)].map((m) => m[1]));
+  return nomeados.size;
 }
 
 /**
