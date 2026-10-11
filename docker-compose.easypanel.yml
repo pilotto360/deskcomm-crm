@@ -4,6 +4,8 @@ services:
     pull_policy: ${APP_PULL_POLICY:-always}
     restart: unless-stopped
     mem_limit: 768m
+    env_file:
+      - .env
 
     environment:
       # ─────────────────────────────────────────────
@@ -93,6 +95,14 @@ services:
       NUVEMSHOP_ENABLED: "false"
       INTERNAL_AGENT_RUN_STUB: "false"
       SENTRY_DSN: ${SENTRY_DSN:-off}
+
+      # ─────────────────────────────────────────────
+      # Omnique / LangGraph Repasse & MCP
+      # ─────────────────────────────────────────────
+      OMNIQUE_FORWARD_WEBHOOK_URL: ${OMNIQUE_FORWARD_WEBHOOK_URL:-}
+      OMNIQUE_API_BASE_URL: ${OMNIQUE_API_BASE_URL:-}
+      DESKCOMM_MCP_URL: ${DESKCOMM_MCP_URL:-}
+      DESKCOMM_API_TOKEN: ${DESKCOMM_API_TOKEN:-}
 
     depends_on:
       srh:

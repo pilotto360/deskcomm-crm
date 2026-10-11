@@ -47,6 +47,7 @@ export interface InboundWebhookInput {
      *  números ligados, "WhatsApp fora do ar" não diz QUAL. */
     display_name?: string | null;
     phone_number?: string | null;
+    metadata?: Record<string, unknown> | null;
   };
   rawBody: string;
   /** Todos os headers da requisição — cada canal lê o SEU. */
@@ -262,11 +263,15 @@ async function omniqueInbound(
   });
 
   if (!parsed.event.data.echo && result.status === "ingested") {
+    const metaUrl = typeof input.session.metadata?.forward_webhook_url === "string"
+      ? input.session.metadata.forward_webhook_url.trim()
+      : undefined;
     await forwardOmniqueWebhook({
       rawBody: input.rawBody,
       signature,
       conversationId: result.conversationId,
       messageId: result.messageId,
+      forwardUrl: metaUrl,
     });
   }
 
