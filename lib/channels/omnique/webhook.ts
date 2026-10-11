@@ -6,6 +6,8 @@ export interface OmniqueInboundEvent {
   timestamp?: string;
   org_id?: string;
   delivery_id?: string;
+  instanceId?: string;
+  instance_id?: string;
   data: {
     message?: {
       id: string;
@@ -13,7 +15,7 @@ export interface OmniqueInboundEvent {
       to?: string;
       type: string;
       timestamp?: string;
-      text?: { body: string };
+      text?: { body: string } | string;
       image?: { link?: string; caption?: string; id?: string };
       audio?: { link?: string; id?: string };
       document?: { link?: string; filename?: string; caption?: string; id?: string };
@@ -25,7 +27,7 @@ export interface OmniqueInboundEvent {
       to: string;
       type: string;
       timestamp?: string;
-      text?: { body: string };
+      text?: { body: string } | string;
     };
     channel?: {
       id?: string;
@@ -53,8 +55,14 @@ export function validarAssinaturaOmnique(
 }
 
 export function extrairTextoMensagem(data: OmniqueInboundEvent["data"]): string | null {
-  if (data.message?.text?.body) return data.message.text.body;
-  if (data.echo?.text?.body) return data.echo.text.body;
+  const msgObj = data.message ?? data.echo;
+  if (!msgObj) return null;
+
+  if (typeof msgObj.text === "string") return msgObj.text;
+  if (msgObj.text && typeof msgObj.text === "object" && "body" in msgObj.text && typeof msgObj.text.body === "string") {
+    return msgObj.text.body;
+  }
+
   const imgCaption = data.message?.image?.caption;
   if (imgCaption) return imgCaption;
   const docCaption = data.message?.document?.caption;

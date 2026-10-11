@@ -3,6 +3,7 @@ import { canonicalPhoneBR } from "../phone-variants";
 import { encontrarContatoPorTelefone } from "../contato-por-telefone";
 import { marcarConversaComMensagem } from "../marcar-conversa";
 import { aplicarEfeitosPosEntrada } from "../pos-entrada";
+import { pausarIaPorAtendimentoManual } from "@/lib/escalacao/atendimento-manual";
 import { extrairTextoMensagem, type OmniqueInboundEvent } from "./webhook";
 
 type Admin = SupabaseClient;
@@ -14,6 +15,16 @@ export interface IngestOmniqueResult {
   reason?: string;
 }
 
+interface IngestContext {
+  organizationId: string;
+  channelSessionId: string;
+}
+
+interface TargetIdentity {
+  contactId: string;
+  conversationId: string;
+}
+
 export async function ingestOmniqueEvent(
   admin: Admin,
   event: OmniqueInboundEvent,
@@ -23,73 +34,133 @@ export async function ingestOmniqueEvent(
   const msgObj = event.data.message ?? event.data.echo;
   if (!msgObj) return { status: "ignored", reason: "sem_mensagem" };
 
-  const externalId = msgObj.id;
-  const orgId = session.organization_id;
+  const ctx: IngestContext = { organizationId: session.organization_id, channelSessionId: session.id };
+  if (await verificarMensagemDuplicada(admin, ctx.organizationId, msgObj.id)) {
+    return { status: "duplicate" };
+  }
 
-  const { data: existente } = await admin
+  const rawPhone = isEcho ? msgObj.to : msgObj.from;
+  if (!rawPhone) return { status: "ignored", reason: "sem_telefone" };
+
+  const identity = await resolverContatoEConversa(admin, ctx, rawPhone);
+  if (!identity) return { status: "failed", reason: "falha_upsert_contato_ou_conversa" };
+
+  const bodyText = extrairTextoMensagem(event.data) ?? "";
+  const direction = isEcho ? "outbound" : "inbound";
+  const insercao = await inserirLinhaDaMensagem(admin, {
+    ctx, identity, externalId: msgObj.id, direction, bodyText, eventName: event.event,
+  });
+
+  if (insercao.duplicate) return { status: "duplicate" };
+  if (insercao.error || !insercao.id) return { status: "failed", reason: insercao.error };
+
+  await despacharEfeitosDaMensagem(admin, {
+    ctx, identity, messageId: insercao.id, bodyText, isEcho,
+  });
+
+  return { status: "ingested", conversationId: identity.conversationId, messageId: insercao.id };
+}
+
+async function verificarMensagemDuplicada(
+  admin: Admin,
+  orgId: string,
+  externalId: string,
+): Promise<boolean> {
+  const { data } = await admin
     .from("messages")
     .select("id")
     .eq("organization_id", orgId)
     .eq("external_id", externalId)
     .maybeSingle();
+  return Boolean(data);
+}
 
-  if (existente) return { status: "duplicate" };
-
-  const rawPhone = isEcho ? msgObj.to : msgObj.from;
-  if (!rawPhone) return { status: "ignored", reason: "sem_telefone" };
-
+async function resolverContatoEConversa(
+  admin: Admin,
+  ctx: IngestContext,
+  rawPhone: string,
+): Promise<TargetIdentity | null> {
   const phone = canonicalPhoneBR(`+${rawPhone.replace(/\D/g, "")}`);
-  const contactId = await upsertContact(admin, orgId, phone, rawPhone);
-  if (!contactId) return { status: "failed", reason: "falha_upsert_contato" };
+  const contactId = await upsertContact(admin, ctx.organizationId, phone, rawPhone);
+  if (!contactId) return null;
+  const conversationId = await upsertConversation(admin, ctx.organizationId, contactId, ctx.channelSessionId);
+  if (!conversationId) return null;
+  return { contactId, conversationId };
+}
 
-  const conversationId = await upsertConversation(admin, orgId, contactId, session.id);
-  if (!conversationId) return { status: "failed", reason: "falha_upsert_conversa" };
-
-  const bodyText = extrairTextoMensagem(event.data) ?? "";
-  const direction = isEcho ? "outbound" : "inbound";
-
-  const { data: inserted, error: insertErr } = await admin
+async function inserirLinhaDaMensagem(
+  admin: Admin,
+  params: {
+    ctx: IngestContext;
+    identity: TargetIdentity;
+    externalId: string;
+    direction: "inbound" | "outbound";
+    bodyText: string;
+    eventName: string;
+  },
+): Promise<{ id?: string; duplicate?: boolean; error?: string }> {
+  const { data, error } = await admin
     .from("messages")
     .insert({
-      organization_id: orgId,
-      conversation_id: conversationId,
-      direction,
-      body: bodyText,
-      external_id: externalId,
+      organization_id: params.ctx.organizationId,
+      conversation_id: params.identity.conversationId,
+      channel_session_id: params.ctx.channelSessionId,
+      contact_id: params.identity.contactId,
+      direction: params.direction,
+      sent_via: "external_device",
+      type: "text",
+      body: params.bodyText,
+      external_id: params.externalId,
       status: "delivered",
-      metadata: { provider: "omnique", omnique_event: event.event },
+      metadata: { provider: "omnique", omnique_event: params.eventName },
     })
     .select("id")
     .single();
 
-  if (insertErr || !inserted) {
-    if (insertErr?.code === "23505") return { status: "duplicate" };
-    return { status: "failed", reason: insertErr?.message };
+  if (error) {
+    if (error.code === "23505") return { duplicate: true };
+    return { error: error.message };
   }
+  return { id: data?.id };
+}
 
+async function despacharEfeitosDaMensagem(
+  admin: Admin,
+  params: {
+    ctx: IngestContext;
+    identity: TargetIdentity;
+    messageId: string;
+    bodyText: string;
+    isEcho: boolean;
+  },
+): Promise<void> {
   await marcarConversaComMensagem(admin, {
-    organizationId: orgId,
-    conversationId,
-    direction,
-    preview: bodyText.slice(0, 120),
+    organizationId: params.ctx.organizationId,
+    conversationId: params.identity.conversationId,
+    direction: params.isEcho ? "outbound" : "inbound",
+    preview: params.bodyText.slice(0, 120),
     at: new Date().toISOString(),
     canal: "omnique",
   });
 
-  if (!isEcho) {
+  if (!params.isEcho) {
     await aplicarEfeitosPosEntrada(admin, {
-      organizationId: orgId,
-      conversationId,
-      contactId,
-      messageId: inserted.id,
-      channelSessionId: session.id,
-      texto: bodyText,
+      organizationId: params.ctx.organizationId,
+      conversationId: params.identity.conversationId,
+      contactId: params.identity.contactId,
+      messageId: params.messageId,
+      channelSessionId: params.ctx.channelSessionId,
+      texto: params.bodyText,
       nomeDoContato: null,
       origem: "omnique",
     });
+  } else {
+    await pausarIaPorAtendimentoManual(admin, {
+      organizationId: params.ctx.organizationId,
+      conversationId: params.identity.conversationId,
+      canal: "omnique",
+    });
   }
-
-  return { status: "ingested", conversationId, messageId: inserted.id };
 }
 
 async function upsertContact(

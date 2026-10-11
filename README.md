@@ -570,7 +570,19 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
   4. Ao clicar em **Salvar Associação**, as regras são persistidas em `saved_values.mappings` daquele template.
   5. Nos disparos (seja pelo Inbox, por automações, por IA ou por API), o sistema interpola automaticamente as variáveis mapeadas com os dados do contato correspondente antes do envio.
 
+### Integração Omnique e Agente Externo de IA (LangGraph)
+- **Descrição:** Recepção de mensagens inbound do canal oficial WhatsApp Omnique, gravação segura no CRM e repasse em tempo real para agente externo em LangGraph com metadados de contexto.
+- **Fluxo:**
+  1. A Omnique envia eventos de mensagens inbound via webhook HTTP POST para a rota `/api/v1/webhooks/channel/[token]`.
+  2. A rota valida a sessão pelo token de rota e autentica a requisição.
+  3. A ingestão realiza o upsert do contato e da conversa, persistindo a mensagem com `channel_session_id`, `contact_id` e conteúdo de texto.
+  4. O CRM despacha os efeitos pós-entrada e repassa o webhook com assinatura e cabeçalhos de contexto (`x-deskcomm-conversation-id`, `x-deskcomm-message-id`) para o agente externo configurado em `OMNIQUE_FORWARD_WEBHOOK_URL`.
+  5. Ecos de atendimento humano feito fora do CRM pausam a IA e não são repassados ao agente para evitar loops.
+
 ### Correções Recentes (Fixes)
+- **Ingestão de Mensagens do Canal Omnique e Repasse para Agente LangGraph:**
+  - **O que foi corrigido:** A gravação da mensagem no banco omitia o campo obrigatório `channel_session_id`, gerando erro de restrição NOT NULL no Postgres, o que impedia que a mensagem aparecesse no CRM e bloqueava o repasse para o agente externo. O extrator de texto também foi enriquecido para suportar tanto strings diretas quanto objetos aninhados.
+  - **Comportamento esperado após a correção:** Mensagens de clientes são salvas com sucesso no histórico do CRM e encaminhadas instantaneamente para o agente LangGraph.
 - **Envio de Templates com Parâmetros Nomeados e Cabeçalho de Mídia:**
   - **O que foi corrigido:** O adapter do provedor intermediado descartava parâmetros nomeados de templates (como `{{primeiro_nome}}`) e omitia o componente de cabeçalho de mídia exigido pela Meta. Adicionalmente, a rota de listagem de templates de parceiro não serializava os slots de parâmetros, permitindo envio sem valores que falhava na validação de pré-voo (`template_missing_values`).
   - **Comportamento esperado após a correção:** A listagem expõe os slots do modelo, a interface de janela fechada exibe os campos e pré-preenche as variáveis automaticamente, o pré-voo aceita os valores e a imagem de exemplo aprovada, e o adapter entrega a mensagem via WhatsApp com parâmetros e cabeçalho devidamente formatados.
