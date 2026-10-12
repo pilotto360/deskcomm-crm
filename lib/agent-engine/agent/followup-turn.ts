@@ -592,21 +592,38 @@ async function resolveFlowSend(
   if (input.templateId === undefined) return null;
 
   // 1. Tenta achar em meta_templates (templates oficiais da Meta aprovados)
-  const { rows: metaRows } = await pool.query<{
-    id: string;
-    name: string;
-    language: string;
-    status: string;
-    components: unknown;
-    parameter_format: string;
-    saved_values: Record<string, unknown> | null;
-  }>(
-    `select id, name, language, status, components, parameter_format, saved_values
-     from meta_templates
-     where organization_id = $1 and (id = $2 or name = $2)
-     limit 1`,
-    [tenantId, input.templateId],
-  );
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.templateId);
+  const { rows: metaRows } = isUuid
+    ? await pool.query<{
+        id: string;
+        name: string;
+        language: string;
+        status: string;
+        components: unknown;
+        parameter_format: string;
+        saved_values: Record<string, unknown> | null;
+      }>(
+        `select id, name, language, status, components, parameter_format, saved_values
+         from meta_templates
+         where organization_id = $1 and id = $2
+         limit 1`,
+        [tenantId, input.templateId],
+      )
+    : await pool.query<{
+        id: string;
+        name: string;
+        language: string;
+        status: string;
+        components: unknown;
+        parameter_format: string;
+        saved_values: Record<string, unknown> | null;
+      }>(
+        `select id, name, language, status, components, parameter_format, saved_values
+         from meta_templates
+         where organization_id = $1 and name = $2
+         limit 1`,
+        [tenantId, input.templateId],
+      );
 
   const metaRow = metaRows[0];
   if (metaRow) {
@@ -666,17 +683,19 @@ async function resolveFlowSend(
   }
 
   // 2. Fallback para message_templates (modelos de texto internos do CRM)
-  const { rows } = await pool.query<{ body: string }>(
-    `select body from message_templates where organization_id = $1 and id = $2 limit 1`,
-    [tenantId, input.templateId],
-  );
-  const body = rows[0]?.body;
-  if (body === undefined || body.length === 0) {
-    throw new Error('followup_turn sem modelo de mensagem — o template_id do passo não existe nesta organização');
+  if (isUuid) {
+    const { rows } = await pool.query<{ body: string }>(
+      `select body from message_templates where organization_id = $1 and id = $2 limit 1`,
+      [tenantId, input.templateId],
+    );
+    const body = rows[0]?.body;
+    if (body !== undefined && body.length > 0) {
+      return {
+        body: interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal),
+      };
+    }
   }
-  return {
-    body: interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal),
-  };
+  throw new Error('followup_turn sem modelo de mensagem — o template_id do passo não existe nesta organização');
 }
 
 async function resolveFlowSendBody(
