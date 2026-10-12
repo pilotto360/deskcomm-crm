@@ -52,6 +52,8 @@ import {
   type EsperaParaPlanejar,
   type PropostaDeEsperaBruta,
 } from './followup-flow-classify';
+import { deriveTemplateContract } from '@/lib/channels/meta/template-contract';
+import { renderTemplateBody } from '@/lib/channels/meta/render-template';
 
 const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
@@ -434,10 +436,10 @@ async function runFlowDrivenTurn(
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: target.tenantId, lead_id: target.leadId, enrollment_id: enrollmentId });
 
   if (input.purpose === 'send_message') {
-    const body = await resolveFlowSendBody(pool, target.tenantId, input);
-    if (body !== null) {
+    const resolved = await resolveFlowSend(pool, target.tenantId, input, target.leadId);
+    if (resolved !== null) {
       // Texto do operador: sem camada semântica (ver o cabeçalho de sendFixedOutbound).
-      const desfecho = await sendFixedOutbound(deps, job, pool, ctx, clock, target, body, false);
+      const desfecho = await sendFixedOutbound(deps, job, pool, ctx, clock, target, resolved.body, false, resolved.metaTemplate);
       // TODO OS TRÊS DESFECHOS VOLTAM PARA O ENROLLMENT. O adiado era o que não
       // voltava, e o silêncio dele custava o enrollment inteiro: o motor ficava
       // rechecando um turno que ninguém ia fechar e, esgotado o orçamento do
@@ -568,6 +570,115 @@ function interpolarVoltaDoPayload(texto: string, index: number | undefined, tota
   return texto.replaceAll('{{volta}}', String(index)).replaceAll('{{voltas}}', String(total));
 }
 
+async function resolveFlowSend(
+  pool: pg.Pool,
+  tenantId: string,
+  input: {
+    fixedBody: string | undefined;
+    templateId: string | undefined;
+    voltaIndex: number | undefined;
+    voltaTotal: number | undefined;
+  },
+  contactId?: string | null,
+): Promise<{
+  body: string;
+  metaTemplate?: { name: string; language: string; values: Record<string, string> };
+} | null> {
+  if (input.fixedBody !== undefined) {
+    return {
+      body: interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal),
+    };
+  }
+  if (input.templateId === undefined) return null;
+
+  // 1. Tenta achar em meta_templates (templates oficiais da Meta aprovados)
+  const { rows: metaRows } = await pool.query<{
+    id: string;
+    name: string;
+    language: string;
+    status: string;
+    components: unknown;
+    parameter_format: string;
+    saved_values: Record<string, unknown> | null;
+  }>(
+    `select id, name, language, status, components, parameter_format, saved_values
+     from meta_templates
+     where organization_id = $1 and (id = $2 or name = $2)
+     limit 1`,
+    [tenantId, input.templateId],
+  );
+
+  const metaRow = metaRows[0];
+  if (metaRow) {
+    if (metaRow.status !== 'APPROVED') {
+      throw new Error(`followup_turn: o template "${metaRow.name}" está ${metaRow.status} na Meta (só templates APPROVED podem ser disparados)`);
+    }
+
+    let contactData: { name?: string | null; first_name?: string | null } = {};
+    if (contactId) {
+      const { rows: contactRows } = await pool.query<{ name: string | null }>(
+        `select name from contacts where organization_id = $1 and id = $2 limit 1`,
+        [tenantId, contactId],
+      );
+      if (contactRows[0]) {
+        const fullName = contactRows[0].name?.trim() || '';
+        const firstName = fullName.split(' ')[0]?.trim() || '';
+        contactData = { name: fullName, first_name: firstName };
+      }
+    }
+
+    const values: Record<string, string> = {};
+    const saved = (metaRow.saved_values ?? {}) as Record<string, unknown>;
+    if (typeof saved['header:1'] === 'string') {
+      values['header:1'] = saved['header:1'];
+    }
+
+    const contrato = deriveTemplateContract({
+      name: metaRow.name,
+      language: metaRow.language,
+      parameter_format: metaRow.parameter_format,
+      components: metaRow.components as never,
+    });
+
+    for (const slot of contrato.slots) {
+      const chave = slot.key;
+      if (values[chave]) continue;
+      if (chave === 'primeiro_nome' || chave === 'nome' || chave === '1') {
+        const val = contactData.first_name || contactData.name || '';
+        if (val) values[chave] = val;
+      }
+    }
+
+    const rendered = renderTemplateBody(metaRow.components, values, {
+      name: metaRow.name,
+      language: metaRow.language,
+      parameterFormat: metaRow.parameter_format,
+    });
+
+    return {
+      body: rendered,
+      metaTemplate: {
+        name: metaRow.name,
+        language: metaRow.language,
+        values,
+      },
+    };
+  }
+
+  // 2. Fallback para message_templates (modelos de texto internos do CRM)
+  const { rows } = await pool.query<{ body: string }>(
+    `select body from message_templates where organization_id = $1 and id = $2 limit 1`,
+    [tenantId, input.templateId],
+  );
+  const body = rows[0]?.body;
+  if (body === undefined || body.length === 0) {
+    throw new Error('followup_turn sem modelo de mensagem — o template_id do passo não existe nesta organização');
+  }
+  return {
+    body: interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal),
+  };
+}
+
 async function resolveFlowSendBody(
   pool: pg.Pool,
   tenantId: string,
@@ -578,19 +689,8 @@ async function resolveFlowSendBody(
     voltaTotal: number | undefined;
   },
 ): Promise<string | null> {
-  if (input.fixedBody !== undefined) {
-    return interpolarVoltaDoPayload(input.fixedBody, input.voltaIndex, input.voltaTotal);
-  }
-  if (input.templateId === undefined) return null;
-  const { rows } = await pool.query<{ body: string }>(
-    `select body from message_templates where organization_id = $1 and id = $2 limit 1`,
-    [tenantId, input.templateId],
-  );
-  const body = rows[0]?.body;
-  if (body === undefined || body.length === 0) {
-    throw new Error('followup_turn sem modelo de mensagem — o template_id do passo não existe nesta organização');
-  }
-  return interpolarVoltaDoPayload(body, input.voltaIndex, input.voltaTotal);
+  const r = await resolveFlowSend(pool, tenantId, input);
+  return r ? r.body : null;
 }
 
 /**
@@ -630,6 +730,7 @@ async function sendFixedOutbound(
   body: string,
   /** `true` só na re-entrada por template — ver o cabeçalho. */
   comCamadaSemantica: boolean,
+  metaTemplate?: { name: string; language: string; values: Record<string, string> },
 ): Promise<EnvioFixoDesfecho> {
   const { tenantId, leadId, channelSessionId, conversationId } = target;
   const runLog = withFields(deps.log, { job_id: job.id, tenant_id: tenantId, lead_id: leadId });
@@ -670,6 +771,7 @@ async function sendFixedOutbound(
     channelSessionId,
     body,
     optedOutThisTurn,
+    isTemplate: metaTemplate !== undefined,
     crmDailyLimit: null,
     now: clock(),
     sleep: deps.sleep,
@@ -687,7 +789,17 @@ async function sendFixedOutbound(
             ),
         }
       : {}),
-    send: (finalBody) => channel.send({ tenantId, leadId, jobId: job.id, jobClaim:claimOfJob(job), seq: 1, conversationId, body: finalBody }),
+    send: (finalBody) =>
+      channel.send({
+        tenantId,
+        leadId,
+        jobId: job.id,
+        jobClaim: claimOfJob(job),
+        seq: 1,
+        conversationId,
+        body: finalBody,
+        ...(metaTemplate ? { template: metaTemplate } : {}),
+      }),
   });
 
   if (chain.status === 'vetoed') {

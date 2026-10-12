@@ -14,15 +14,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { actionConfigSchema } from "@/lib/followup/graph-schema";
 import { MODOS_DA_ACAO, opcoes, type ModoDaAcao } from "@/lib/followup/vocabulario";
 import { useMessageTemplates } from "@/hooks/inbox/useMessageTemplates";
+import { useMetaTemplates } from "@/hooks/channels/useMetaTemplates";
 import { useT } from "@/hooks/i18n/useT";
 
 import type { ConfigOf } from "./shared";
 
 /**
- * O seletor de modelo, no lugar dos dois `<Input>` que pediam um UUID colado à
- * mão. Trata os três estados em vez de fingir que a lista sempre chega:
- * carregando, vazia e erro — porque um seletor vazio sem explicação é o mesmo
- * beco sem saída que o campo de UUID era, só que mais bonito.
+ * O seletor de modelo, suportando tanto Templates Oficiais da Meta (HSM)
+ * quanto modelos de texto rápido do CRM.
  */
 function SeletorDeModelo({
   id,
@@ -36,20 +35,19 @@ function SeletorDeModelo({
   permiteVazio: boolean;
 }) {
   const t = useT();
-  const { data: modelos, isLoading, isError } = useMessageTemplates();
+  const { data: modelos, isLoading: loadingModelos } = useMessageTemplates();
+  const { data: metaTemplates, isLoading: loadingMeta } = useMetaTemplates();
 
+  const isLoading = loadingModelos || loadingMeta;
   if (isLoading) return <p className="text-xs text-text-muted">{t("Carregando seus modelos…")}</p>;
-  if (isError) {
-    return (
-      <p className="text-xs text-error-fg">
-        {t("Não consegui carregar seus modelos de mensagem. Recarregue a página.")}
-      </p>
-    );
-  }
-  if (!modelos?.length) {
+
+  const hasMeta = (metaTemplates?.length ?? 0) > 0;
+  const hasModelos = (modelos?.length ?? 0) > 0;
+
+  if (!hasMeta && !hasModelos) {
     return (
       <p className="text-xs text-text-muted">
-        {t("Você ainda não tem modelos de mensagem. Crie um em Ajustes → Modelos e ele aparece aqui.")}
+        {t("Você ainda não tem modelos aprovados na Meta nem no CRM.")}
       </p>
     );
   }
@@ -65,11 +63,30 @@ function SeletorDeModelo({
       </SelectTrigger>
       <SelectContent>
         {permiteVazio && <SelectItem value={SEM_MODELO}>{t("Nenhum")}</SelectItem>}
-        {modelos.map((m) => (
-          <SelectItem key={m.id} value={m.id}>
-            {m.title}
-          </SelectItem>
-        ))}
+        {hasMeta && (
+          <>
+            <div className="px-2 py-1.5 text-xs font-semibold text-text-muted">
+              {t("WhatsApp Oficial (Meta HSM - imagem e botões)")}
+            </div>
+            {metaTemplates?.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                ✨ {m.name} ({m.language}) — Meta Oficial
+              </SelectItem>
+            ))}
+          </>
+        )}
+        {hasModelos && (
+          <>
+            <div className="px-2 py-1.5 text-xs font-semibold text-text-muted">
+              {t("Modelos de Texto (CRM)")}
+            </div>
+            {modelos?.map((m) => (
+              <SelectItem key={m.id} value={m.id}>
+                💬 {m.title}
+              </SelectItem>
+            ))}
+          </>
+        )}
       </SelectContent>
     </Select>
   );
