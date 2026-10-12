@@ -45,6 +45,7 @@ import {
 } from "@/lib/messaging/contact-card";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
+import { syncOutboundToLangGraph } from "@/lib/channels/omnique/sync-langgraph";
 import { nomeDoContato } from "@/lib/contacts/rotulo-do-contato";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Message } from "@/lib/types/messaging";
@@ -389,7 +390,7 @@ export async function sendMessageHandler(
   // envio com 42703. Sem a coluna, nada está arquivado — e a consulta sem ela é a
   // consulta certa (ver lib/channels/archived).
   const convSelect = (comArchived: boolean) =>
-    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(name, display_name, phone_number, wa_identity, wa_lid, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
+    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, bot_silenced_until, provider_conversation_id, last_inbound_at, contacts:contact_id(name, display_name, phone_number, wa_identity, wa_lid, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status, metadata${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
   //
   // O filtro por `organization_id` NÃO é redundância com a RLS — é a única
   // proteção que existe na metade dos chamadores. Este handler é a porta de
@@ -460,7 +461,7 @@ export async function sendMessageHandler(
       wa_lid: string | null;
       is_blocked: boolean;
     } | null;
-    channel_sessions: (ChannelSessionRef & { status: string; archived_at?: string | null }) | null;
+    channel_sessions: (ChannelSessionRef & { status: string; metadata?: Record<string, unknown> | null; archived_at?: string | null }) | null;
   };
   const c = conv as unknown as Joined;
 
@@ -951,6 +952,21 @@ export async function sendMessageHandler(
         .select(MSG_COLS)
         .maybeSingle();
       if (updated) message = updated as unknown as Message;
+
+      const forwardUrl = typeof (c.channel_sessions?.metadata as Record<string, unknown> | undefined)?.forward_webhook_url === "string"
+        ? ((c.channel_sessions?.metadata as Record<string, unknown>).forward_webhook_url as string)
+        : undefined;
+      if (forwardUrl) {
+        void syncOutboundToLangGraph({
+          admin: supabase,
+          forwardUrl,
+          phoneNumber: c.contacts?.phone_number,
+          body: message.body,
+          externalId,
+          templateName: input.template_name,
+          messageType: input.type,
+        });
+      }
       }
     } catch (err) {
       if (err instanceof StaleServiceBoundaryError || err instanceof AgendaDeferredError || err instanceof ApprovedReplyReceiptPersistenceError) throw err;

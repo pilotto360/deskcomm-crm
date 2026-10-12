@@ -213,14 +213,18 @@ async function processEvent(
   }
   const p = parsed.data;
 
-  // Spec 14: org em modo 'external' tem agente EXTERNO como dono da conversa —
+  // Spec 14: org em modo 'external' ou sessão com forward_webhook_url tem agente EXTERNO como dono da conversa —
   // o engine não responde por cima. Evento é consumido (done) sem job.
-  const { rows: modeRows } = await pool.query<{ mode: string | null }>(
-    `select settings->>'ai_dispatch_mode' as mode from organizations where id = $1`,
-    [event.organization_id],
+  const { rows: modeRows } = await pool.query<{ mode: string | null; forward_url: string | null }>(
+    `select o.settings->>'ai_dispatch_mode' as mode,
+            cs.metadata->>'forward_webhook_url' as forward_url
+     from organizations o
+     left join channel_sessions cs on cs.id = $2
+     where o.id = $1`,
+    [event.organization_id, p.channel_session_id],
   );
-  if (modeRows[0]?.mode === 'external') {
-    log.info('drain: org em modo external (spec 14) — evento pulado', { event_id: event.id });
+  if (modeRows[0]?.mode === 'external' || Boolean(modeRows[0]?.forward_url)) {
+    log.info('drain: org em modo external ou sessao com forward_webhook_url (spec 14) — evento pulado', { event_id: event.id });
     return 'processado';
   }
 

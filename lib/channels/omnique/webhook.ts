@@ -20,6 +20,12 @@ export interface OmniqueInboundEvent {
       audio?: { link?: string; id?: string };
       document?: { link?: string; filename?: string; caption?: string; id?: string };
       video?: { link?: string; caption?: string; id?: string };
+      button?: { text?: string; payload?: string };
+      interactive?: {
+        type?: string;
+        button_reply?: { id?: string; title?: string };
+        list_reply?: { id?: string; title?: string; description?: string };
+      };
     };
     echo?: {
       id: string;
@@ -28,6 +34,12 @@ export interface OmniqueInboundEvent {
       type: string;
       timestamp?: string;
       text?: { body: string } | string;
+      button?: { text?: string; payload?: string };
+      interactive?: {
+        type?: string;
+        button_reply?: { id?: string; title?: string };
+        list_reply?: { id?: string; title?: string; description?: string };
+      };
     };
     channel?: {
       id?: string;
@@ -54,6 +66,22 @@ export function validarAssinaturaOmnique(
   return crypto.timingSafeEqual(bufHmac, bufEsp);
 }
 
+function extrairTextoInterativo(msgObj: {
+  button?: { text?: string; payload?: string };
+  interactive?: {
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string };
+  };
+}): string | null {
+  const btn = msgObj.button?.text || msgObj.button?.payload;
+  if (btn && typeof btn === "string") return btn;
+
+  const interativo = msgObj.interactive?.button_reply?.title || msgObj.interactive?.list_reply?.title;
+  if (interativo && typeof interativo === "string") return interativo;
+
+  return null;
+}
+
 export function extrairTextoMensagem(data: OmniqueInboundEvent["data"]): string | null {
   const msgObj = data.message ?? data.echo;
   if (!msgObj) return null;
@@ -63,9 +91,8 @@ export function extrairTextoMensagem(data: OmniqueInboundEvent["data"]): string 
     return msgObj.text.body;
   }
 
-  const imgCaption = data.message?.image?.caption;
-  if (imgCaption) return imgCaption;
-  const docCaption = data.message?.document?.caption;
-  if (docCaption) return docCaption;
-  return null;
+  const textoBotao = extrairTextoInterativo(msgObj);
+  if (textoBotao) return textoBotao;
+
+  return data.message?.image?.caption ?? data.message?.document?.caption ?? null;
 }

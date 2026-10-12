@@ -221,4 +221,28 @@ describe("webhook Omnique", () => {
     const echoData = { echo: { id: "2", from: "me", to: "123", type: "text", text: { body: "Meu eco" } } };
     expect(extrairTextoMensagem(echoData)).toBe("Meu eco");
   });
+
+  it("extrai texto de cliques de botão de template e botões interativos", () => {
+    const btnData = {
+      message: {
+        id: "btn-1",
+        from: "123",
+        type: "button",
+        button: { text: "Manter meu cadastro", payload: "Manter meu cadastro" },
+      },
+    };
+    expect(extrairTextoMensagem(btnData)).toBe("Manter meu cadastro");
+
+    const interactiveData = {
+      message: {
+        id: "btn-2",
+        from: "123",
+        type: "interactive",
+        interactive: {
+          button_reply: { id: "opt-1", title: "Remover meu cadastro" },
+        },
+      },
+    };
+    expect(extrairTextoMensagem(interactiveData)).toBe("Remover meu cadastro");
+  });
 });

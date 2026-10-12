@@ -589,6 +589,15 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
 - **Erro 403 Forbidden no Download de Mídia pela Meta (Código 131053):**
   - **O que foi corrigido:** Disparos de templates com imagens apontando para links temporários da Meta (`scontent.whatsapp.net`) resultavam em erro `131053: Downloading media from weblink failed with http code 403, status message Forbidden`.
   - **Comportamento esperado após a correção:** Todo cabeçalho de mídia é espelhado automaticamente no Supabase Storage público (`template-assets`), garantindo URL permanente acessível pela Meta e entrega bem-sucedida da mensagem.
+- **Extração de Cliques em Botões de Templates e Menus Interativos (Omnique):**
+  - **O que foi corrigido:** Respostas de leads clicando em botões de templates (`type: "button"`) ou opções interativas (`type: "interactive"`) não eram capturadas pelo parser de webhook, sendo gravadas com texto vazio (`body: ""`). Isso fazia o motor de IA falhar ao entender a escolha do usuário.
+  - **Comportamento esperado após a correção:** O texto e o payload do botão clicado (ex.: "Manter meu cadastro", "Remover meu cadastro") são extraídos imediatamente e persistidos na conversa do CRM e no repasse ao agente externo.
+- **Eliminação de Respostas Concorrentes Duplicadas (Engine Nativo vs Agente Externo):**
+  - **O que foi corrigido:** Sessões com repasse para agentes externos (como LangGraph) continuavam acordando o `agent-engine` nativo do CRM em paralelo, fazendo o lead receber duas respostas simultâneas e divergentes.
+  - **Comportamento esperado após a correção:** O despachante nativo do CRM verifica o modo externo da organização e a URL de repasse da sessão, pulando o processamento nativo e garantindo que apenas o agente externo responda à conversa.
+- **Sincronização de Templates e Outbound na Memória do LangGraph:**
+  - **O que foi corrigido:** Mensagens de templates disparadas pelo CRM ficavam registradas apenas na tabela `messages`, não entrando na tabela `whatsapp_messages` do LangGraph, deixando o agente externo sem contexto sobre o que foi perguntado ao lead.
+  - **Comportamento esperado após a correção:** Todo template outbound disparado pelo CRM é replicado automaticamente na tabela `whatsapp_messages`, garantindo que o histórico da conversa (`formatted_history`) do LangGraph contenha o template e as opções apresentadas.
 
 ---
 
