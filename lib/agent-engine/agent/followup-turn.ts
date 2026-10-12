@@ -791,6 +791,7 @@ async function sendFixedOutbound(
     body,
     optedOutThisTurn,
     isTemplate: metaTemplate !== undefined,
+    enforceSpinning: metaTemplate === undefined,
     crmDailyLimit: null,
     now: clock(),
     sleep: deps.sleep,
