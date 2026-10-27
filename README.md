@@ -577,7 +577,16 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
   2. A rota valida a sessão pelo token de rota e autentica a requisição.
   3. A ingestão realiza o upsert do contato e da conversa, persistindo a mensagem com `channel_session_id`, `contact_id` e conteúdo de texto.
   4. O CRM despacha os efeitos pós-entrada e repassa o webhook com assinatura e cabeçalhos de contexto (`x-deskcomm-conversation-id`, `x-deskcomm-message-id`) para o agente externo configurado em `OMNIQUE_FORWARD_WEBHOOK_URL`.
-  5. Ecos de atendimento humano feito fora do CRM pausam a IA e não são repassados ao agente para evitar loops.
+### Campanhas e Disparos Automáticos com Teto Diário e Ritmo Anti-Ban
+- **Descrição:** Módulo nativo dedicado à automação de disparos e reativação de bases de contatos no WhatsApp, com controle rigoroso de horário comercial (09:00 às 18:00, segunda a sexta), teto diário fixado (ex: 25 disparos/dia) e intervalo médio com variação aleatória (*jitter*) para proteção contra banimentos de número, eliminando a necessidade de qualquer movimentação manual de cartões no Kanban.
+- **Fluxo:**
+  1. O usuário acessa **CRM → Campanhas** (`/app/campanhas`) e visualiza o painel com métricas em tempo real (Disparados Hoje, Fila de Espera, Total da Base e Status da Automação).
+  2. Ao clicar em **Nova Campanha**, seleciona o canal de WhatsApp conectado, a tag do público-alvo (ex: `recadastramento_pendente`), o teto diário (25/dia), horário de funcionamento (09:00 - 18:00), intervalo médio e o texto da mensagem com preview e variáveis dinâmicas (`{{primeiro_nome}}`).
+  3. O backend popula a fila na tabela `public.campaign_recipients` associada à campanha `public.campaigns`.
+  4. O worker em segundo plano (`/api/v1/cron/campaign-dispatcher`) roda automaticamente a cada minuto e avalia se o momento atual é dia útil, está dentro do horário comercial e se o teto diário de 25 mensagens ainda não foi atingido.
+  5. Se todas as regras forem satisfeitas e o intervalo com *jitter* for cumprido, o motor abre a conversa no CRM, envia a mensagem pelo WhatsApp, marca o destinatário como `sent`, atualiza as tags do contato (remove `recadastramento_pendente` e insere `recadastramento_enviado`) e vincula o lead ao funil na etapa *Reativação enviada*.
+  6. Quando o lead responde no WhatsApp, a automação existente do funil reconhece a interação, move automaticamente o lead para a coluna *Respondeu* e o agente de IA assume a condução do diálogo.
+  7. A tela também oferece o botão **Disparar 1 Agora (Teste)** para validação imediata de envio sob demanda.
 
 ### Correções Recentes (Fixes)
 - **Ingestão de Mensagens do Canal Omnique e Repasse para Agente LangGraph:**
