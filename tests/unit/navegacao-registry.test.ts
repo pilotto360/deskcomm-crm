@@ -127,6 +127,7 @@ describe("sidebarGroups", () => {
     expect(crm?.items.map((i) => i.href)).toEqual([
       "/app/kanban",
       "/app/contacts",
+      "/app/campanhas",
       "/app/tasks",
       // "/app/calls" (telefonia por SIP) NÃO entra aqui, e a ausência é a
       // decisão: o módulo é OPCIONAL e nasce desligado (doc 27), então a porta
@@ -175,6 +176,7 @@ describe("hubSections", () => {
       "/app/prospecting",
       "/app/kanban",
       "/app/contacts",
+      "/app/campanhas",
       "/app/tasks",
       "/app/calls",
       "/app/comandas",
