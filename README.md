@@ -609,6 +609,10 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
 - **Resolução de Erro 500 e Falha de Compilação no Módulo de Campanhas:**
   - **O que foi corrigido:** A consulta SQL das rotas de listagem de campanhas (`/api/v1/campaigns`) referenciava `cs.name`, coluna inexistente na tabela `channel_sessions` (onde os identificadores são `display_name`, `phone_number` e `waha_session_name`), gerando erro de banco 500 ao abrir a tela. Adicionalmente, o componente cliente importava o ícone inexistente `ChatCircleText` em vez de `ChatCircle`, causando quebra estática de compilação.
   - **Comportamento esperado após a correção:** A rota resolve o nome do canal via `coalesce(cs.display_name, cs.phone_number, cs.waha_session_name)`, o componente compila perfeitamente e a página `/app/campanhas` carrega instantaneamente com todas as métricas e a lista de campanhas.
+- **Tipagem Estrita de Auditoria e Dispatcher de Campanhas no CI/Build:**
+  - **O que foi corrigido:** O vocabulário canônico de auditoria (`AUDIT_ACTIONS`) não continha as ações `campaigns.created` e `campaigns.updated`, e o worker de envio utilizava o tipo de autor `'system'` inexistente em `Actor`, além de colunas numéricas com tipagem `number | null`, reprovando a verificação de tipos (`tsc`) durante os pipelines de CI e impedindo a publicação da imagem Docker no GHCR.
+  - **Comportamento esperado após a correção:** O build do Next.js e o pipeline `Publicar imagem Docker (GHCR)` passam com sucesso sem erros de tipagem estrita, gerando e publicando as imagens de produção normalmente.
+
 
 ---
 

@@ -89,10 +89,10 @@ export async function tickCampaigns(
     name: string;
     channel_session_id: string;
     message_body: string;
-    teto_diario: number | null;
-    intervalo_segundos: number | null;
-    janela_inicio_hora: number | null;
-    janela_fim_hora: number | null;
+    teto_diario: number;
+    intervalo_segundos: number;
+    janela_inicio_hora: number;
+    janela_fim_hora: number;
     pipeline_id: string | null;
     stage_id: string | null;
     agent_id: string | null;
@@ -311,7 +311,9 @@ export async function dispatchNextForCampaign(
     admin,
     {
       organization_id: c.organization_id,
-      actor: { type: "system", role: "admin" },
+      actor: c.agent_id
+        ? { type: "ai_agent", id: `campaign:${c.id}`, agent_id: c.agent_id, role: "ai_operator" }
+        : { type: "webhook_source", id: `campaign:${c.id}` },
       requestId: `campanha:${c.id}:${recipient.id}`,
     },
     {

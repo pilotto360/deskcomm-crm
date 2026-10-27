@@ -783,6 +783,11 @@ export const AUDIT_ACTIONS = [
   "external_db_connection.deleted",
   "external_db_connection.tested",
   "external_db_connection.read",
+
+  // Campanhas
+  "campaigns.created",
+  "campaigns.updated",
+  "campaigns.deleted",
 ] as const;
 
 /** Um código de auditoria. Derivado de `AUDIT_ACTIONS` — não redigite a lista. */
