@@ -105,6 +105,7 @@ export async function POST(req: NextRequest) {
       WHERE organization_id = $1 
         AND phone_number IS NOT NULL 
         AND btrim(phone_number) <> ''
+        AND coalesce(is_blocked, false) = false
         AND $2 = ANY(tags)
       ORDER BY created_at ASC
       `,

@@ -276,8 +276,9 @@ export async function dispatchNextForCampaign(
     display_name: string | null;
     phone_number: string | null;
     tags: string[] | null;
+    is_blocked: boolean | null;
   }>(
-    `SELECT id, display_name, phone_number, tags FROM public.contacts WHERE id = $1`,
+    `SELECT id, display_name, phone_number, tags, is_blocked FROM public.contacts WHERE id = $1`,
     [recipient.contact_id],
   );
 
@@ -292,6 +293,25 @@ export async function dispatchNextForCampaign(
       name: c.name,
       dispatched: false,
       reason: "Contato sem telefone válido.",
+    };
+  }
+
+  // 6.1 Proteção contra opt-out / descadastro (is_blocked = true)
+  if (contact.is_blocked) {
+    await pool.query(
+      `UPDATE public.campaign_recipients 
+       SET status = 'failed', 
+           eligibility_status = 'ineligible', 
+           last_error_code = 'CONTACT_BLOCKED', 
+           last_error_detail = 'Contato com opt-out/descadastro ativo (is_blocked=true)' 
+       WHERE id = $1`,
+      [recipient.id],
+    );
+    return {
+      campaignId: c.id,
+      name: c.name,
+      dispatched: false,
+      reason: "Contato com opt-out/descadastro ativo (is_blocked=true). Envio ignorado.",
     };
   }
 
