@@ -606,7 +606,9 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
   - **Comportamento esperado após a correção:** O despachante nativo do CRM verifica o modo externo da organização e a URL de repasse da sessão, pulando o processamento nativo e garantindo que apenas o agente externo responda à conversa.
 - **Sincronização de Templates e Outbound na Memória do LangGraph:**
   - **O que foi corrigido:** Mensagens de templates disparadas pelo CRM ficavam registradas apenas na tabela `messages`, não entrando na tabela `whatsapp_messages` do LangGraph, deixando o agente externo sem contexto sobre o que foi perguntado ao lead.
-  - **Comportamento esperado após a correção:** Todo template outbound disparado pelo CRM é replicado automaticamente na tabela `whatsapp_messages`, garantindo que o histórico da conversa (`formatted_history`) do LangGraph contenha o template e as opções apresentadas.
+- **Resolução de Erro 500 e Falha de Compilação no Módulo de Campanhas:**
+  - **O que foi corrigido:** A consulta SQL das rotas de listagem de campanhas (`/api/v1/campaigns`) referenciava `cs.name`, coluna inexistente na tabela `channel_sessions` (onde os identificadores são `display_name`, `phone_number` e `waha_session_name`), gerando erro de banco 500 ao abrir a tela. Adicionalmente, o componente cliente importava o ícone inexistente `ChatCircleText` em vez de `ChatCircle`, causando quebra estática de compilação.
+  - **Comportamento esperado após a correção:** A rota resolve o nome do canal via `coalesce(cs.display_name, cs.phone_number, cs.waha_session_name)`, o componente compila perfeitamente e a página `/app/campanhas` carrega instantaneamente com todas as métricas e a lista de campanhas.
 
 ---
 
