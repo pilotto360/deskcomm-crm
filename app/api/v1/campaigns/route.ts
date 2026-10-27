@@ -200,7 +200,7 @@ export async function POST(req: NextRequest) {
       resourceType: "campaign",
       resourceId: campaignId,
       organizationId: orgId,
-      userId: authz.user.id,
+      actorUserId: authz.user.id,
       requestId,
       metadata: {
         name: data.name,

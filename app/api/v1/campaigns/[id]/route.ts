@@ -174,7 +174,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       resourceType: "campaign",
       resourceId: id,
       organizationId: orgId,
-      userId: authz.user.id,
+      actorUserId: authz.user.id,
       requestId,
       metadata: data,
     });
