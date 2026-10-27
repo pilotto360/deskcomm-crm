@@ -15,7 +15,7 @@ import {
   ShieldCheck,
   Funnel,
   Sparkle,
-  ChatCircleText,
+  ChatCircle,
 } from "@/lib/ui/icons";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,8 +60,10 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
     emDisparo,
   } = useCampaigns();
 
-  const { data: channels = [] } = useChannelSessions();
-  const { data: tags = [] } = useContactTagVocabulary(orgId);
+  const { data: rawChannels } = useChannelSessions();
+  const channels = Array.isArray(rawChannels) ? rawChannels : [];
+  const { data: rawTags } = useContactTagVocabulary(orgId);
+  const tags = Array.isArray(rawTags) ? rawTags : [];
 
   const [modalCriacaoAberto, setModalCriacaoAberto] = useState(false);
   const [nome, setNome] = useState("Reativação Esperança e Vida - 25/dia");
@@ -417,7 +419,7 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
                   {/* WhatsApp Message Preview Bubble */}
                   <div className="mt-2 rounded-lg border border-emerald-500/20 bg-emerald-950/10 p-3.5">
                     <div className="flex items-center gap-1.5 text-xs font-medium text-emerald-400 mb-2">
-                      <ChatCircleText className="h-4 w-4" />
+                      <ChatCircle className="h-4 w-4" />
                       Mensagem enviada no WhatsApp:
                     </div>
                     <div className="rounded-lg bg-[#005c4b]/30 border border-[#005c4b]/40 p-3 text-sm text-[#e9edef] whitespace-pre-wrap leading-relaxed max-w-2xl font-sans">

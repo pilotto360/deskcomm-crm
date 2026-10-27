@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     const { rows: campaigns } = await pool.query(`
       SELECT 
         c.*,
-        cs.name as channel_name,
+        coalesce(cs.display_name, cs.phone_number, cs.waha_session_name) as channel_name,
         p.name as pipeline_name,
         s.name as stage_name,
         count(cr.id)::int as total_recipients,
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
       LEFT JOIN public.crm_stages s ON s.id = c.stage_id
       LEFT JOIN public.campaign_recipients cr ON cr.campaign_id = c.id
       WHERE c.organization_id = $1
-      GROUP BY c.id, cs.name, p.name, s.name
+      GROUP BY c.id, cs.display_name, cs.phone_number, cs.waha_session_name, p.name, s.name
       ORDER BY c.created_at DESC
     `, [orgId]);
 
