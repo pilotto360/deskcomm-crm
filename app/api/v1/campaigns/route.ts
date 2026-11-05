@@ -18,7 +18,7 @@ const createCampaignSchema = z.object({
   send_type: z.enum(["text", "template"]).default("text"),
   template_name: z.string().trim().nullable().optional(),
   template_language: z.string().trim().default("pt_BR").optional(),
-  template_variables: z.record(z.string()).optional(),
+  template_variables: z.record(z.string(), z.string()).optional(),
   teto_diario: z.number().int().min(1).max(1000).default(25),
   intervalo_segundos: z.number().int().min(60).max(86400).default(1200),
   janela_inicio_hora: z.number().int().min(0).max(23).default(9),

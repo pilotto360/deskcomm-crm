@@ -20,7 +20,7 @@ const patchCampaignSchema = z.object({
   send_type: z.enum(["text", "template"]).optional(),
   template_name: z.string().trim().nullable().optional(),
   template_language: z.string().trim().optional(),
-  template_variables: z.record(z.string()).optional(),
+  template_variables: z.record(z.string(), z.string()).optional(),
 });
 
 interface RouteParams {
