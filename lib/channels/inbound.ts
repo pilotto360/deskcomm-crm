@@ -262,7 +262,7 @@ async function omniqueInbound(
     organization_id: input.session.organization_id,
   });
 
-  if (!parsed.event.data.echo && result.status === "ingested") {
+  if (!parsed.event.data.echo && result.status === "ingested" && result.conversationId && result.messageId) {
     const metaUrl = typeof input.session.metadata?.forward_webhook_url === "string"
       ? input.session.metadata.forward_webhook_url.trim()
       : undefined;

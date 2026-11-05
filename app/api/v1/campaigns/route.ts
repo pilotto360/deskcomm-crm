@@ -15,6 +15,10 @@ const createCampaignSchema = z.object({
   channel_session_id: z.string().uuid(),
   message_body: z.string().min(5).max(4000),
   tag: z.string().min(1),
+  send_type: z.enum(["text", "template"]).default("text"),
+  template_name: z.string().trim().nullable().optional(),
+  template_language: z.string().trim().default("pt_BR").optional(),
+  template_variables: z.record(z.string()).optional(),
   teto_diario: z.number().int().min(1).max(1000).default(25),
   intervalo_segundos: z.number().int().min(60).max(86400).default(1200),
   janela_inicio_hora: z.number().int().min(0).max(23).default(9),
@@ -125,6 +129,10 @@ export async function POST(req: NextRequest) {
         status,
         channel_session_id,
         message_body,
+        send_type,
+        template_name,
+        template_language,
+        template_variables,
         base_legal,
         lia_ref,
         audience_filter,
@@ -141,8 +149,8 @@ export async function POST(req: NextRequest) {
         created_at,
         updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, 'legitimate_interest', 'LIA-REATIVACAO',
-        $7, $8, $9, $10, $11, $12, $13, $14, $15, $15,
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'legitimate_interest', 'LIA-REATIVACAO',
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $19,
         CASE WHEN $4 = 'running' THEN now() ELSE null END,
         now(), now()
       )
@@ -155,6 +163,10 @@ export async function POST(req: NextRequest) {
         initialStatus,
         data.channel_session_id,
         data.message_body,
+        data.send_type,
+        data.template_name ?? null,
+        data.template_language ?? "pt_BR",
+        JSON.stringify(data.template_variables ?? {}),
         JSON.stringify({ tag: data.tag }),
         data.intervalo_segundos,
         data.janela_inicio_hora,

@@ -17,6 +17,10 @@ const patchCampaignSchema = z.object({
   janela_inicio_hora: z.number().int().min(0).max(23).optional(),
   janela_fim_hora: z.number().int().min(1).max(24).optional(),
   message_body: z.string().min(5).max(4000).optional(),
+  send_type: z.enum(["text", "template"]).optional(),
+  template_name: z.string().trim().nullable().optional(),
+  template_language: z.string().trim().optional(),
+  template_variables: z.record(z.string()).optional(),
 });
 
 interface RouteParams {
@@ -147,6 +151,22 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       updates.push(`message_body = $${idx++}`);
       values.push(data.message_body);
       updates.push(`content_version = content_version + 1`);
+    }
+    if (data.send_type !== undefined) {
+      updates.push(`send_type = $${idx++}`);
+      values.push(data.send_type);
+    }
+    if (data.template_name !== undefined) {
+      updates.push(`template_name = $${idx++}`);
+      values.push(data.template_name);
+    }
+    if (data.template_language !== undefined) {
+      updates.push(`template_language = $${idx++}`);
+      values.push(data.template_language);
+    }
+    if (data.template_variables !== undefined) {
+      updates.push(`template_variables = $${idx++}`);
+      values.push(JSON.stringify(data.template_variables));
     }
 
     if (updates.length === 0) {

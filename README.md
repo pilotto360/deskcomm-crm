@@ -588,7 +588,22 @@ Pra **vulnerabilidades de segurança**, **NÃO abra issue pública** — use o [
   6. Quando o lead responde no WhatsApp, a automação existente do funil reconhece a interação, move automaticamente o lead para a coluna *Respondeu* e o agente de IA assume a condução do diálogo.
   7. A tela também oferece o botão **Disparar 1 Agora (Teste)** para validação imediata de envio sob demanda.
 
+### Disparo de Campanhas com Modelos Aprovados da Meta (Templates WhatsApp)
+- **Descrição:** Criação e disparo de campanhas ativas utilizando Modelos Oficiais aprovados pela Meta no WhatsApp Cloud API, permitindo alcançar contatos com a janela de 24 horas fechada com conformidade oficial, botões interativos de resposta rápida e parâmetros dinâmicos.
+- **Fluxo:**
+  1. Ao criar uma campanha em **CRM → Campanhas**, o usuário pode escolher entre a aba **Template Oficial Meta (Recomendado)** e **Texto Livre (Janela 24h)**.
+  2. Na aba de Template, o sistema lista os modelos homologados da Meta (`APPROVED`) sincronizados com o canal selecionado (ex: `atualizacao_cadastro_2`).
+  3. Ao selecionar o modelo, a interface exibe o preview do texto oficial e os botões interativos cadastrados (ex: "Quero continuar" / "Não quero receber").
+  4. O sistema associa os campos do modelo (`template_name`, `template_language`, `template_variables`) à campanha.
+  5. Durante o disparo pelo cron, o worker injeta os parâmetros do contato (como `{{primeiro_nome}}`) e formata o payload estrito com `type: "template"`, assegurando que a Meta aprove e entregue a mensagem mesmo para conversas inativas.
+
 ### Correções Recentes (Fixes)
+- **Resolução de Erro 131047 da Meta em Disparos de Campanhas Ativas:**
+  - **O que foi corrigido:** O disparo de campanhas enviava mensagens exclusivamente como texto livre (`type: "text"`). Quando disparadas para contatos sem interação nas últimas 24 horas pelo WhatsApp Cloud API (Omnique), a Meta aceitava a requisição mas bloqueava a entrega de forma assíncrona com o erro `131047: Message failed to send because more than 24 hours have passed since the customer last replied to this number`.
+  - **Comportamento esperado após a correção:** O módulo de campanhas suporta nativamente o envio via template oficial (`send_type: "template"`). O despachante monta a requisição estruturada com o nome do modelo aprovado e os parâmetros preenchidos, permitindo que as mensagens de reativação sejam entregues com sucesso e reabram a janela de diálogo com o lead.
+- **Ingestão e Sincronização de Status de Entrega do Provedor Omnique (`event: status`):**
+  - **O que foi corrigido:** O webhook da Omnique recebia eventos de status (`status: "delivered"`, `"read"`, `"failed"`), porém o parser descartava eventos sem corpo de mensagem ou echo (`sem_mensagem`). Com isso, mensagens com falha na entrega permaneciam marcadas indefinidamente como `sent` no CRM e os destinatários da campanha não refletiam o status real.
+  - **Comportamento esperado após a correção:** O handler processa os eventos do tipo `status`, atualizando a tabela `messages` (`status`, `ack`, `delivered_at`, `read_at`, `error_code`, `error_message`) e sincronizando em tempo real os status correspondentes na fila de `campaign_recipients`.
 - **Ingestão de Mensagens do Canal Omnique e Repasse para Agente LangGraph:**
   - **O que foi corrigido:** A gravação da mensagem no banco omitia o campo obrigatório `channel_session_id`, gerando erro de restrição NOT NULL no Postgres, o que impedia que a mensagem aparecesse no CRM e bloqueava o repasse para o agente externo. O extrator de texto também foi enriquecido para suportar tanto strings diretas quanto objetos aninhados.
   - **Comportamento esperado após a correção:** Mensagens de clientes são salvas com sucesso no histórico do CRM e encaminhadas instantaneamente para o agente LangGraph.

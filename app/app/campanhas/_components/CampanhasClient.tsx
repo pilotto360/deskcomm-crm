@@ -38,10 +38,28 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCampaigns } from "@/hooks/campaigns/useCampaigns";
 import { useChannelSessions, channelLabel } from "@/hooks/channels/useChannelSessions";
 import { useContactTagVocabulary } from "@/hooks/contacts/useContactTagVocabulary";
+import { useMetaTemplates } from "@/hooks/channels/useMetaTemplates";
 import type { CampaignWithStats } from "@/lib/campaigns/types";
+
+function extractBodyFromComponents(components: unknown[] | undefined): string {
+  if (!Array.isArray(components)) return "";
+  const bodyComp = components.find(
+    (c) => typeof c === "object" && c !== null && (c as { type?: string }).type === "BODY",
+  ) as { text?: string } | undefined;
+  return bodyComp?.text ?? "";
+}
+
+function extractButtonsFromComponents(components: unknown[] | undefined): Array<{ text: string }> {
+  if (!Array.isArray(components)) return [];
+  const btnComp = components.find(
+    (c) => typeof c === "object" && c !== null && (c as { type?: string }).type === "BUTTONS",
+  ) as { buttons?: Array<{ text: string }> } | undefined;
+  return btnComp?.buttons ?? [];
+}
 
 interface CampanhasClientProps {
   podeGerenciar: boolean;
@@ -64,8 +82,12 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
   const channels = Array.isArray(rawChannels) ? rawChannels : [];
   const { data: rawTags } = useContactTagVocabulary(orgId);
   const tags = Array.isArray(rawTags) ? rawTags : [];
+  const { data: metaTemplatesData } = useMetaTemplates();
+  const metaTemplates = Array.isArray(metaTemplatesData) ? metaTemplatesData : [];
 
   const [modalCriacaoAberto, setModalCriacaoAberto] = useState(false);
+  const [tipoEnvio, setTipoEnvio] = useState<"template" | "text">("template");
+  const [templateEscolhido, setTemplateEscolhido] = useState<string>("atualizacao_cadastro_2");
   const [nome, setNome] = useState("Reativação Esperança e Vida - 25/dia");
   const [canalId, setCanalId] = useState("");
   const [tagEscolhida, setTagEscolhida] = useState("recadastramento_pendente");
@@ -128,10 +150,16 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
     }
 
     try {
+      const isTemplate = tipoEnvio === "template";
+      const targetTemplate = isTemplate ? templateEscolhido : null;
+
       await criarCampanha({
         name: nome.trim(),
         channel_session_id: targetChannel,
         tag: tagEscolhida,
+        send_type: tipoEnvio,
+        template_name: targetTemplate,
+        template_language: "pt_BR",
         message_body: mensagem.trim(),
         teto_diario: tetoDiario,
         intervalo_segundos: intervaloMin * 60,
@@ -307,6 +335,20 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
                           </Badge>
                         ) : (
                           <Badge variant="secondary">{c.status}</Badge>
+                        )}
+                        {c.send_type === "template" || c.template_name ? (
+                          <Badge variant="outline" className="border-sky-500/30 bg-sky-500/10 text-sky-400 gap-1 py-0.5">
+                            <Sparkle className="h-3 w-3" /> Template Meta: {c.template_name}
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-border/60 text-muted-foreground py-0.5">
+                            Texto Livre
+                          </Badge>
+                        )}
+                        {c.failed_total > 0 && (
+                          <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-400 py-0.5">
+                            {c.failed_total} falhas
+                          </Badge>
                         )}
                       </div>
                       <p className="mt-1 text-xs text-muted-foreground flex items-center gap-2">
@@ -548,19 +590,89 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
               </div>
             </div>
 
+            {/* Seletor de Tipo de Envio: Template Oficial (Recomendado) vs Texto Livre */}
+            <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-muted/20 p-3">
+              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Tipo de Disparo
+              </Label>
+              <Tabs value={tipoEnvio} onValueChange={(v) => setTipoEnvio(v as "template" | "text")}>
+                <TabsList className="grid w-full grid-cols-2">
+                  <TabsTrigger value="template" className="gap-1.5 text-xs">
+                    <Sparkle className="h-3.5 w-3.5 text-emerald-400" />
+                    Template Oficial Meta (Recomendado)
+                  </TabsTrigger>
+                  <TabsTrigger value="text" className="gap-1.5 text-xs">
+                    <ChatCircle className="h-3.5 w-3.5 text-sky-400" />
+                    Texto Livre (Janela 24h)
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {tipoEnvio === "template" ? (
+                <div className="flex flex-col gap-2 pt-2">
+                  <div className="flex flex-col gap-1.5">
+                    <Label className="text-xs">Selecione o Template Aprovado pela Meta</Label>
+                    <Select
+                      value={templateEscolhido}
+                      onValueChange={(val) => {
+                        setTemplateEscolhido(val);
+                        const chosen = metaTemplates.find((t) => t.name === val);
+                        if (chosen) {
+                          const body = extractBodyFromComponents(chosen.components);
+                          if (body) setMensagem(body);
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione um template..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {metaTemplates.map((t) => (
+                          <SelectItem key={t.id} value={t.name}>
+                            {t.name} ({t.category || "APPROVED"})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    ✓ Permite envio para contatos inativos fora da janela de 24 horas (política oficial da Meta).
+                  </p>
+                </div>
+              ) : (
+                <p className="text-[11px] text-amber-400/90 pt-1">
+                  ⚠️ Atenção: Na API Oficial da Meta, envio de texto livre para contatos que não falaram nas últimas 24h é rejeitado pela Meta. Use apenas para conexões QR Code ou reengajamento ativo.
+                </p>
+              )}
+            </div>
+
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="camp-msg">Mensagem WhatsApp</Label>
+                <Label htmlFor="camp-msg">Prévia da Mensagem WhatsApp</Label>
                 <span className="text-[11px] text-emerald-400 font-mono">Variável: {"{{primeiro_nome}}"}</span>
               </div>
               <Textarea
                 id="camp-msg"
-                rows={5}
+                rows={4}
                 value={mensagem}
                 onChange={(e) => setMensagem(e.target.value)}
                 placeholder="Escreva a mensagem que será enviada aos contatos..."
                 className="font-sans leading-relaxed"
+                readOnly={tipoEnvio === "template"}
               />
+              {tipoEnvio === "template" && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {extractButtonsFromComponents(
+                    metaTemplates.find((t) => t.name === templateEscolhido)?.components,
+                  ).map((btn, i) => (
+                    <span
+                      key={i}
+                      className="inline-flex items-center gap-1 rounded border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-400 font-medium"
+                    >
+                      Botão: {btn.text}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
 

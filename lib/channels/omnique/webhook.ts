@@ -1,5 +1,21 @@
 import crypto from "node:crypto";
 
+export interface OmniqueStatusError {
+  code: number;
+  title?: string;
+  message?: string;
+  error_data?: { details?: string };
+}
+
+export interface OmniqueStatusData {
+  id: string;
+  status: string;
+  timestamp?: string;
+  recipient_id?: string;
+  recipient_user_id?: string;
+  errors?: OmniqueStatusError[];
+}
+
 export interface OmniqueInboundEvent {
   event: string;
   origin?: string;
@@ -9,6 +25,7 @@ export interface OmniqueInboundEvent {
   instanceId?: string;
   instance_id?: string;
   data: {
+    status?: OmniqueStatusData;
     message?: {
       id: string;
       from: string;

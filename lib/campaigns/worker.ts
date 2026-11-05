@@ -2,6 +2,7 @@ import type pg from "pg";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { openSharedContactConversation } from "@/lib/messaging/open-shared-contact-conversation";
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
+import type { SendMessageInput } from "@/lib/schemas";
 import { logger } from "@/lib/logger";
 
 interface HorarioLocal {
@@ -61,6 +62,42 @@ export function extraiPrimeiroNome(nomeCompleto: string | null | undefined): str
   return primeiro.charAt(0).toUpperCase() + primeiro.slice(1).toLowerCase();
 }
 
+interface CampanhaEnvioConfig {
+  send_type?: "text" | "template" | null;
+  template_name?: string | null;
+  template_language?: string | null;
+  template_variables?: Record<string, string> | null;
+}
+
+export function construirPayloadDeEnvioDaCampanha(
+  conversationId: string,
+  renderedText: string,
+  primeiroNome: string,
+  config: CampanhaEnvioConfig,
+): SendMessageInput {
+  const isTemplate = config.send_type === "template" || Boolean(config.template_name);
+  if (!isTemplate) {
+    return {
+      conversation_id: conversationId,
+      type: "text",
+      body: renderedText,
+    };
+  }
+
+  return {
+    conversation_id: conversationId,
+    type: "template",
+    template_name: config.template_name ?? "atualizacao_cadastro_2",
+    template_language: config.template_language ?? "pt_BR",
+    template_values: {
+      primeiro_nome: primeiroNome,
+      "1": primeiroNome,
+      ...(config.template_variables ?? {}),
+    },
+    body: renderedText,
+  };
+}
+
 export interface TickCampaignResult {
   campaignId: string;
   name: string;
@@ -96,13 +133,21 @@ export async function tickCampaigns(
     pipeline_id: string | null;
     stage_id: string | null;
     agent_id: string | null;
+    send_type?: "text" | "template" | null;
+    template_name?: string | null;
+    template_language?: string | null;
+    template_variables?: Record<string, string> | null;
   }>(`
     SELECT id, organization_id, name, channel_session_id, message_body,
            coalesce(teto_diario, 25) as teto_diario,
            coalesce(intervalo_segundos, 1200) as intervalo_segundos,
            coalesce(janela_inicio_hora, 9) as janela_inicio_hora,
            coalesce(janela_fim_hora, 18) as janela_fim_hora,
-           pipeline_id, stage_id, agent_id
+           pipeline_id, stage_id, agent_id,
+           coalesce(send_type, 'text') as send_type,
+           template_name,
+           coalesce(template_language, 'pt_BR') as template_language,
+           template_variables
     FROM public.campaigns
     WHERE status = 'running'
     ORDER BY created_at ASC
@@ -149,6 +194,10 @@ export async function dispatchNextForCampaign(
     pipeline_id: string | null;
     stage_id: string | null;
     agent_id: string | null;
+    send_type?: "text" | "template" | null;
+    template_name?: string | null;
+    template_language?: string | null;
+    template_variables?: Record<string, string> | null;
   },
   spTime = getHorarioSaoPaulo(),
 ): Promise<TickCampaignResult> {
@@ -326,7 +375,14 @@ export async function dispatchNextForCampaign(
     contact_id: contact.id,
   });
 
-  // 9. Envia a mensagem pelo WhatsApp
+  // 9. Envia a mensagem pelo WhatsApp (Template Oficial ou Texto Livre)
+  const sendPayload = construirPayloadDeEnvioDaCampanha(
+    opened.conversation_id,
+    renderedText,
+    primeiroNome,
+    c,
+  );
+
   const sentMsg = await sendMessageHandler(
     admin,
     {
@@ -336,11 +392,7 @@ export async function dispatchNextForCampaign(
         : { type: "webhook_source", id: `campaign:${c.id}` },
       requestId: `campanha:${c.id}:${recipient.id}`,
     },
-    {
-      conversation_id: opened.conversation_id,
-      type: "text",
-      body: renderedText,
-    },
+    sendPayload,
   );
 
   // 10. Atualiza o status do destinatário para 'sent'

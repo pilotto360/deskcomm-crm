@@ -34,6 +34,10 @@ export interface Campaign {
   status: CampaignStatus;
   channel_session_id: string;
   message_body: string | null;
+  send_type?: "text" | "template" | null;
+  template_name?: string | null;
+  template_language?: string | null;
+  template_variables?: Record<string, string> | null;
   base_legal: string;
   lia_ref: string | null;
   audience_filter: CampaignAudienceFilter;
@@ -77,6 +81,10 @@ export interface CreateCampaignInput {
   channel_session_id: string;
   message_body: string;
   tag: string;
+  send_type?: "text" | "template";
+  template_name?: string | null;
+  template_language?: string | null;
+  template_variables?: Record<string, string>;
   teto_diario?: number;
   intervalo_segundos?: number;
   janela_inicio_hora?: number;
@@ -91,6 +99,10 @@ export interface UpdateCampaignInput {
   name?: string;
   description?: string;
   message_body?: string;
+  send_type?: "text" | "template";
+  template_name?: string | null;
+  template_language?: string | null;
+  template_variables?: Record<string, string>;
   status?: CampaignStatus;
   teto_diario?: number;
   intervalo_segundos?: number;

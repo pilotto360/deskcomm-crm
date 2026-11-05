@@ -4,7 +4,7 @@ import { encontrarContatoPorTelefone } from "../contato-por-telefone";
 import { marcarConversaComMensagem } from "../marcar-conversa";
 import { aplicarEfeitosPosEntrada } from "../pos-entrada";
 import { pausarIaPorAtendimentoManual } from "@/lib/escalacao/atendimento-manual";
-import { extrairTextoMensagem, type OmniqueInboundEvent } from "./webhook";
+import { extrairTextoMensagem, type OmniqueInboundEvent, type OmniqueStatusData } from "./webhook";
 
 type Admin = SupabaseClient;
 
@@ -30,6 +30,10 @@ export async function ingestOmniqueEvent(
   event: OmniqueInboundEvent,
   session: { id: string; organization_id: string },
 ): Promise<IngestOmniqueResult> {
+  if (event.event === "status" && event.data.status) {
+    return handleOmniqueStatusEvent(admin, event.data.status, session);
+  }
+
   const isEcho = Boolean(event.data.echo);
   const msgObj = event.data.message ?? event.data.echo;
   if (!msgObj) return { status: "ignored", reason: "sem_mensagem" };
@@ -198,3 +202,81 @@ async function upsertConversation(
 
   return (convId as string) || null;
 }
+
+function buildMessageStatusUpdate(
+  statusObj: OmniqueStatusData,
+  rawStatus: string,
+): Record<string, unknown> {
+  const ts = statusObj.timestamp
+    ? new Date(parseInt(statusObj.timestamp, 10) * 1000).toISOString()
+    : new Date().toISOString();
+
+  if (rawStatus === "delivered") {
+    return { status: "delivered", ack: 2, delivered_at: ts };
+  }
+  if (rawStatus === "read") {
+    return { status: "read", ack: 3, read_at: ts };
+  }
+  if (rawStatus === "failed") {
+    const firstErr = statusObj.errors?.[0];
+    const errCode = firstErr ? String(firstErr.code) : "omnique_delivery_failed";
+    const errDetail = firstErr?.error_data?.details || firstErr?.message || firstErr?.title || "Meta delivery failed";
+    return { status: "failed", error_code: errCode, error_message: errDetail };
+  }
+  return { status: "sent", ack: 1 };
+}
+
+async function sincronizarStatusDestinatarioCampanha(
+  admin: Admin,
+  messageId: string,
+  statusObj: OmniqueStatusData,
+): Promise<void> {
+  const rawStatus = (statusObj.status || "").toLowerCase();
+  if (rawStatus === "failed") {
+    const firstErr = statusObj.errors?.[0];
+    const errCode = firstErr ? String(firstErr.code) : "DELIVERY_FAILED";
+    const errDetail = firstErr?.error_data?.details || firstErr?.message || "Falha na entrega";
+    await admin
+      .from("campaign_recipients")
+      .update({ status: "failed", last_error_code: errCode, last_error_detail: errDetail })
+      .eq("message_id", messageId);
+  } else if (rawStatus === "delivered") {
+    await admin
+      .from("campaign_recipients")
+      .update({ delivered_at: new Date().toISOString() })
+      .eq("message_id", messageId);
+  } else if (rawStatus === "read") {
+    await admin
+      .from("campaign_recipients")
+      .update({ read_at: new Date().toISOString() })
+      .eq("message_id", messageId);
+  }
+}
+
+export async function handleOmniqueStatusEvent(
+  admin: Admin,
+  statusObj: OmniqueStatusData,
+  session: { id: string; organization_id: string },
+): Promise<IngestOmniqueResult> {
+  const externalId = statusObj.id;
+  if (!externalId) return { status: "ignored", reason: "status_sem_id" };
+
+  const rawStatus = (statusObj.status || "").toLowerCase();
+  const updateData = buildMessageStatusUpdate(statusObj, rawStatus);
+
+  const { data: updatedMessages } = await admin
+    .from("messages")
+    .update(updateData)
+    .eq("organization_id", session.organization_id)
+    .eq("channel_session_id", session.id)
+    .eq("external_id", externalId)
+    .select("id");
+
+  const msgId = updatedMessages?.[0]?.id;
+  if (msgId) {
+    await sincronizarStatusDestinatarioCampanha(admin, msgId, statusObj);
+  }
+
+  return { status: "ingested", reason: `status_${rawStatus}` };
+}
+
