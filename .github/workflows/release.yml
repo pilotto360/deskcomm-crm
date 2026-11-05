@@ -30,7 +30,7 @@ permissions:
 
 jobs:
   abrir-pr-de-release:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.repository == 'melgarafael/DeskcommCRM' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -38,7 +38,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: token
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID || secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@v7
@@ -87,7 +87,7 @@ jobs:
             --title "Release ${VERSAO}" --body-file /tmp/corpo.md
 
   cortar-tag:
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.repository == 'melgarafael/DeskcommCRM'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -100,7 +100,7 @@ jobs:
       - uses: actions/create-github-app-token@v3
         id: token
         with:
-          app-id: ${{ secrets.RELEASE_APP_ID }}
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID || secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
 
       - uses: actions/checkout@v7
