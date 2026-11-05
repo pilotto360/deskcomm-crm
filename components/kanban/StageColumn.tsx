@@ -1,6 +1,6 @@
 "use client";
 import { Droppable } from "@hello-pangea/dnd";
-import { useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { useT } from "@/hooks/i18n/useT";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/lib/types/leads";
@@ -36,6 +36,8 @@ interface StageColumnProps {
   onOpen?: (leadId: string) => void;
 }
 
+const TAMANHO_PAGINA_PADRAO = 30;
+
 export function StageColumn({
   stage,
   leads,
@@ -50,6 +52,26 @@ export function StageColumn({
   onOpen,
 }: StageColumnProps) {
   const t = useT();
+  const [limiteVisivel, setLimiteVisivel] = useState(TAMANHO_PAGINA_PADRAO);
+
+  // Se algum card selecionado estiver além do limite visível, expande para mantê-lo visível
+  useEffect(() => {
+    if (!selectedLeadIds || selectedLeadIds.size === 0) return;
+    for (let i = leads.length - 1; i >= limiteVisivel; i--) {
+      if (selectedLeadIds.has(leads[i].id)) {
+        setLimiteVisivel(Math.min(leads.length, i + 10));
+        break;
+      }
+    }
+  }, [selectedLeadIds, leads, limiteVisivel]);
+
+  const leadsVisiveis = leads.slice(0, limiteVisivel);
+  const temMaisLeads = leads.length > limiteVisivel;
+
+  const carregarMaisLeads = () => {
+    setLimiteVisivel((prev) => Math.min(prev + TAMANHO_PAGINA_PADRAO, leads.length));
+  };
+
   const totalCents = leads.reduce((sum, l) => sum + (l.value_cents ?? 0), 0);
   // O total saía SEMPRE em R$: a coluna tinha a sexta cópia do formatador de
   // dinheiro (`formatBRL`, locale e moeda em duro), e a moeda em duro é o que a
@@ -152,7 +174,7 @@ export function StageColumn({
               snapshot.isDraggingOver && "bg-accent/5",
             )}
           >
-            {leads.map((lead, idx) => (
+            {leadsVisiveis.map((lead, idx) => (
               <KanbanCard
                 key={lead.id}
                 card={buildCardInput(lead, {
@@ -173,6 +195,18 @@ export function StageColumn({
               />
             ))}
             {provided.placeholder}
+            {temMaisLeads && (
+              <button
+                type="button"
+                onClick={carregarMaisLeads}
+                className="mt-1 flex w-full items-center justify-center gap-1.5 rounded-md border border-border/80 bg-surface px-3 py-2 text-xs font-medium text-text-muted transition-colors hover:bg-surface-muted hover:text-text active:scale-[0.99]"
+              >
+                <span>{t("Carregar mais")}</span>
+                <span className="text-[11px] text-text-muted/70">
+                  ({leadsVisiveis.length} {t("de")} {leads.length})
+                </span>
+              </button>
+            )}
             {leads.length === 0 && !snapshot.isDraggingOver && (
               <div className="flex h-20 items-center justify-center text-[11px] text-text-muted">
                 {t("vazio")}

@@ -67,6 +67,8 @@ export interface CampaignWithStats extends Campaign {
   total_recipients: number;
   sent_total: number;
   sent_today: number;
+  delivered_total?: number;
+  read_total?: number;
   pending_total: number;
   failed_total: number;
   last_sent_at: string | null;

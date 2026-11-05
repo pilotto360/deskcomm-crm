@@ -345,6 +345,16 @@ export function CampanhasClient({ podeGerenciar, orgId }: CampanhasClientProps) 
                             Texto Livre
                           </Badge>
                         )}
+                        {typeof c.delivered_total === "number" && c.delivered_total > 0 && (
+                          <Badge variant="outline" className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 py-0.5 gap-1">
+                            <CheckCircle className="h-3 w-3" /> {c.delivered_total} entregues
+                          </Badge>
+                        )}
+                        {typeof c.read_total === "number" && c.read_total > 0 && (
+                          <Badge variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-400 py-0.5 gap-1">
+                            <CheckCircle className="h-3 w-3 text-blue-400" /> {c.read_total} lidos
+                          </Badge>
+                        )}
                         {c.failed_total > 0 && (
                           <Badge variant="outline" className="border-red-500/30 bg-red-500/10 text-red-400 py-0.5">
                             {c.failed_total} falhas

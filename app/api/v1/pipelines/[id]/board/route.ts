@@ -36,6 +36,20 @@ interface RouteCtx {
 }
 
 /**
+ * PostgREST serializa filtros `.in("col", [...])` como query param em requisições GET HTTP.
+ * Arrays com centenas de UUIDs (cada um com 36 chars) ultrapassam o limite de 16KB do parser
+ * HTTP do Node.js (undici) gerando HeadersOverflowError (TypeError: fetch failed).
+ * Dividimos arrays em lotes seguros (máx 80 itens por query).
+ */
+function chunkArray<T>(items: T[], size = 80): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/**
  * Anexa a identidade do agente dono (nome + versão publicada) aos leads que têm
  * `owner_kind='ai'`.
  *
@@ -62,14 +76,20 @@ async function withOwnerAgents(
   ];
   if (agentIds.length === 0) return { leads, error: null };
 
-  const { data: agents, error: agentsErr } = await supabase
-    .from("ai_agents")
-    .select("id, name, published_version_id")
-    .eq("organization_id", organizationId)
-    .in("id", agentIds);
-  if (agentsErr) return { leads, error: agentsErr.message };
-
-  const agentRows = (agents ?? []) as Array<{
+  const agentChunks = chunkArray(agentIds, 80);
+  const agentResults = await Promise.all(
+    agentChunks.map((chunk) =>
+      supabase
+        .from("ai_agents")
+        .select("id, name, published_version_id")
+        .eq("organization_id", organizationId)
+        .in("id", chunk),
+    ),
+  );
+  for (const r of agentResults) {
+    if (r.error) return { leads, error: r.error.message };
+  }
+  const agentRows = agentResults.flatMap((r) => r.data ?? []) as Array<{
     id: string;
     name: string;
     published_version_id: string | null;
@@ -80,13 +100,21 @@ async function withOwnerAgents(
     .filter((v): v is string => !!v);
   const versionById = new Map<string, number>();
   if (publishedIds.length > 0) {
-    const { data: versions, error: versionsErr } = await supabase
-      .from("ai_agent_versions")
-      .select("id, version_number")
-      .eq("organization_id", organizationId)
-      .in("id", publishedIds);
-    if (versionsErr) return { leads, error: versionsErr.message };
-    for (const v of (versions ?? []) as Array<{ id: string; version_number: number }>) {
+    const versionChunks = chunkArray(publishedIds, 80);
+    const versionResults = await Promise.all(
+      versionChunks.map((chunk) =>
+        supabase
+          .from("ai_agent_versions")
+          .select("id, version_number")
+          .eq("organization_id", organizationId)
+          .in("id", chunk),
+      ),
+    );
+    for (const r of versionResults) {
+      if (r.error) return { leads, error: r.error.message };
+    }
+    const versions = versionResults.flatMap((r) => r.data ?? []);
+    for (const v of versions as Array<{ id: string; version_number: number }>) {
       versionById.set(v.id, v.version_number);
     }
   }
@@ -139,18 +167,22 @@ async function avisaAmbiguas(
 ): Promise<void> {
   if (ambiguas.length === 0) return;
 
-  const { data: jaAbertos } = await supabase
-    .from("agent_inbox_items")
-    .select("ref_id")
-    .eq("organization_id", organizationId)
-    .eq("kind", "next_action_ambiguous")
-    .eq("status", "open")
-    .in(
-      "ref_id",
-      ambiguas.map((a) => a.contact_id),
-    );
+  const contactIds = ambiguas.map((a) => a.contact_id);
+  const chunks = chunkArray(contactIds, 80);
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("agent_inbox_items")
+        .select("ref_id")
+        .eq("organization_id", organizationId)
+        .eq("kind", "next_action_ambiguous")
+        .eq("status", "open")
+        .in("ref_id", chunk),
+    ),
+  );
+  const jaAbertos = results.flatMap((r) => r.data ?? []);
   const abertos = new Set(
-    ((jaAbertos ?? []) as Array<{ ref_id: string }>).map((r) => r.ref_id),
+    (jaAbertos as Array<{ ref_id: string }>).map((r) => r.ref_id),
   );
 
   const novos = ambiguas
@@ -188,17 +220,23 @@ async function withScores(
 ): Promise<{ leads: Lead[]; error: string | null }> {
   if (leads.length === 0) return { leads, error: null };
 
-  const { data, error } = await supabase
-    .from("crm_lead_scores")
-    .select(
-      "lead_id, ai_probability, ai_probability_reason, ai_probability_band, ai_probability_evidence, ai_probability_at",
-    )
-    .eq("organization_id", organizationId)
-    .in(
-      "lead_id",
-      leads.map((l) => l.id),
-    );
-  if (error) return { leads, error: error.message };
+  const leadIds = leads.map((l) => l.id);
+  const chunks = chunkArray(leadIds, 80);
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("crm_lead_scores")
+        .select(
+          "lead_id, ai_probability, ai_probability_reason, ai_probability_band, ai_probability_evidence, ai_probability_at",
+        )
+        .eq("organization_id", organizationId)
+        .in("lead_id", chunk),
+    ),
+  );
+  for (const r of results) {
+    if (r.error) return { leads, error: r.error.message };
+  }
+  const data = results.flatMap((r) => r.data ?? []);
 
   const porLead = new Map<string, NonNullable<Lead["score"]>>();
   for (const row of (data ?? []) as Array<{
@@ -260,13 +298,21 @@ async function withConversas(
   const contactIds = [...new Set(leads.map((l) => l.contact_id).filter((c): c is string => !!c))];
   if (contactIds.length === 0) return { leads, error: null };
 
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("id, contact_id, last_message_preview, last_message_at, unread_count_for_assignee, tags")
-    .eq("organization_id", organizationId)
-    .in("contact_id", contactIds)
-    .order("last_message_at", { ascending: false, nullsFirst: false });
-  if (error) return { leads, error: error.message };
+  const chunks = chunkArray(contactIds, 80);
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("conversations")
+        .select("id, contact_id, last_message_preview, last_message_at, unread_count_for_assignee, tags")
+        .eq("organization_id", organizationId)
+        .in("contact_id", chunk)
+        .order("last_message_at", { ascending: false, nullsFirst: false }),
+    ),
+  );
+  for (const r of results) {
+    if (r.error) return { leads, error: r.error.message };
+  }
+  const data = results.flatMap((r) => r.data ?? []);
 
   const porContato = new Map<string, NonNullable<Lead["conversa"]>>();
   const marcadoresPorContato = new Map<string, Set<string>>();
@@ -337,12 +383,20 @@ async function withMarcadoresDoContato(
   ];
   if (contactIds.length === 0) return { leads: leadsDoQuadro, error: null };
 
-  const { data, error } = await supabase
-    .from("contacts")
-    .select("id, tags, phone_number, email, custom_fields, is_anonymized")
-    .eq("organization_id", organizationId)
-    .in("id", contactIds);
-  if (error) return { leads: leadsDoQuadro, error: error.message };
+  const chunks = chunkArray(contactIds, 80);
+  const results = await Promise.all(
+    chunks.map((chunk) =>
+      supabase
+        .from("contacts")
+        .select("id, tags, phone_number, email, custom_fields, is_anonymized")
+        .eq("organization_id", organizationId)
+        .in("id", chunk),
+    ),
+  );
+  for (const r of results) {
+    if (r.error) return { leads: leadsDoQuadro, error: r.error.message };
+  }
+  const data = results.flatMap((r) => r.data ?? []);
 
   const linhas = (data ?? []) as Array<{ id: string; tags: string[] | null } & LinhaDoContatoNoQuadro>;
   const leads = anexarDadosDoContato(leadsDoQuadro, linhas);
@@ -374,25 +428,41 @@ async function withNextActions(
   ];
   if (contactIds.length === 0) return { leads, error: null };
 
-  const [{ data: estados, error: estadosErr }, { data: candidatos, error: candErr }] =
-    await Promise.all([
-      supabase
-        .from("lead_state")
-        .select("contact_id, next_action, next_action_seq, updated_at")
-        .eq("organization_id", organizationId)
-        .in("contact_id", contactIds)
-        .not("next_action", "is", null),
-      supabase
-        .from("crm_leads")
-        .select(
-          "id, organization_id, pipeline_id, status, last_activity_at, created_at, contact_id",
-        )
-        .eq("organization_id", organizationId)
-        .eq("status", "open")
-        .in("contact_id", contactIds),
-    ]);
-  if (estadosErr) return { leads, error: estadosErr.message };
-  if (candErr) return { leads, error: candErr.message };
+  const chunks = chunkArray(contactIds, 80);
+  const [estadosResults, candResults] = await Promise.all([
+    Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("lead_state")
+          .select("contact_id, next_action, next_action_seq, updated_at")
+          .eq("organization_id", organizationId)
+          .in("contact_id", chunk)
+          .not("next_action", "is", null),
+      ),
+    ),
+    Promise.all(
+      chunks.map((chunk) =>
+        supabase
+          .from("crm_leads")
+          .select(
+            "id, organization_id, pipeline_id, status, last_activity_at, created_at, contact_id",
+          )
+          .eq("organization_id", organizationId)
+          .eq("status", "open")
+          .in("contact_id", chunk),
+      ),
+    ),
+  ]);
+
+  for (const r of estadosResults) {
+    if (r.error) return { leads, error: r.error.message };
+  }
+  for (const r of candResults) {
+    if (r.error) return { leads, error: r.error.message };
+  }
+
+  const estados = estadosResults.flatMap((r) => r.data ?? []);
+  const candidatos = candResults.flatMap((r) => r.data ?? []);
   if (!estados || estados.length === 0) return { leads, error: null };
 
   const { porLead, ambiguas } = roteiaProximasAcoes(

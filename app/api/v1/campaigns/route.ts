@@ -48,12 +48,13 @@ export async function GET(req: NextRequest) {
         p.name as pipeline_name,
         s.name as stage_name,
         count(cr.id)::int as total_recipients,
-        count(cr.id) filter (where cr.status = 'sent')::int as sent_total,
+        count(cr.id) filter (where cr.status in ('sent', 'delivered', 'read'))::int as sent_total,
+        count(cr.id) filter (where cr.status = 'delivered')::int as delivered_total,
+        count(cr.id) filter (where cr.status = 'read')::int as read_total,
         count(cr.id) filter (where cr.status = 'pending')::int as pending_total,
         count(cr.id) filter (where cr.status = 'failed')::int as failed_total,
         count(cr.id) filter (
-          where cr.status = 'sent' 
-          and cr.sent_at >= (now() at time zone 'America/Sao_Paulo')::date at time zone 'America/Sao_Paulo'
+          where cr.sent_at >= (now() at time zone 'America/Sao_Paulo')::date at time zone 'America/Sao_Paulo'
         )::int as sent_today,
         max(cr.sent_at) as last_sent_at
       FROM public.campaigns c

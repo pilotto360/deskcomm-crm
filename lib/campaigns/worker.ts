@@ -231,7 +231,7 @@ export async function dispatchNextForCampaign(
       count(*) filter (WHERE sent_at >= (now() at time zone 'America/Sao_Paulo')::date at time zone 'America/Sao_Paulo')::int as enviados_hoje,
       max(sent_at) as ultimo_envio
     FROM public.campaign_recipients
-    WHERE campaign_id = $1 AND status = 'sent'
+    WHERE campaign_id = $1 AND sent_at IS NOT NULL
     `,
     [c.id],
   );
