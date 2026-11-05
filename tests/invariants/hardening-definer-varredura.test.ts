@@ -67,6 +67,30 @@ const ANON_PERMITIDO: readonly Excecao[] = [];
  */
 const AUTHENTICATED_PERMITIDO: readonly Excecao[] = [
   {
+    fn: "decrypt_cpf(uuid)",
+    razao:
+      "GET app/api/v1/contacts/[id]/route.ts passa createClient da sessão ao " +
+      "_handler.ts (getContactHandler) quando há cabeçalho x-decrypt-purpose. " +
+      "A função exige auth.uid(), pertencimento à organização do contato via " +
+      "fn_user_org_ids(), papel manager+ via fn_role_at_least(v_org, 'manager'), " +
+      "e grava trilha de auditoria em public.api_audit_log antes de decifrar o CPF.",
+  },
+  {
+    fn: "encrypt_cpf(text)",
+    razao:
+      "POST app/api/v1/contacts/_handler.ts (createContactHandler, patchContactHandler) " +
+      "e app/api/v1/contacts/import/route.ts chamam com createClient da sessão via " +
+      "lib/contacts/cpf.ts (encryptCpfSql) ao persistir CPF cifrado at-rest. " +
+      "A função usa a chave interna via private.fn_cpf_key() e cifra o texto via pgcrypto.",
+  },
+  {
+    fn: "fn_honorarios_parcela_pagar(uuid,uuid,uuid,uuid)",
+    razao:
+      "Transição atômica de honorários_parcelas pendente para pago (migration 0480). " +
+      "Exige auth.uid() não nulo, fn_role_at_least(p_org, 'manager'), FOR UPDATE na parcela " +
+      "e validação de que a conta financeira pertence a p_org antes de inserir em financial_entries.",
+  },
+  {
     fn: "fn_finalizar_comanda(uuid,uuid,uuid,integer)",
     razao:
       "POST app/api/v1/financeiro/comandas/[id]/finalizar/route.ts e " +
