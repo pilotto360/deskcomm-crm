@@ -52,10 +52,15 @@ const TABELAS_NA_CASCATA = [
   "agent_case_events", //  0280 — body/metadata da linha do tempo do caso
   "agent_cases", //        0280 — title/summary/blocker/context_snapshot
   "agent_inbox_items", //  0280 — o aviso da Central que embute o texto do caso
+  "campaign_recipients", // 0477 — o que foi dito à pessoa e o endereço
+  "campaign_suppressions", // 0477 — solta vínculo e apaga cauda de telefone
+  "channel_session_groups", // 0482 — o nome do grupo onde o contato é placeholder
   "contacts", //           0019 — a linha do titular
+  "conversation_notes", // 0483 — a nota interna da conversa e anexos em mídia interna
   "conversations", //      0019 — metadata e prévia da última mensagem
   "crm_lead_activities", //0071 — payload, metadata e `reason` escrito por LLM
   "crm_leads", //          0019 — título, descrição, campos personalizados, tags
+  "crm_proposals", //      0477 — briefing e proposta comercial
   "demandas", //           0280 — o assunto do pedido
   // 0292 — `erro_detalhe` do registro de entrega do aviso: é o texto CRU que o
   // transporte devolveu, e um provedor que recusa um envio costuma devolver o
@@ -69,11 +74,6 @@ const TABELAS_NA_CASCATA = [
   // 0291 — o briefing da passagem: title/body/notes/content e as tentativas.
   // `body` é `not null` e recebe o RÓTULO, não `null`.
   "passagens_de_atendimento",
-  // 0359 — o texto livre da comanda: `notes`, `cancel_reason` e
-  // `reverse_reason`. O valor, o status, as datas e o vínculo com o contato
-  // FICAM: a venda é registro financeiro da organização, e desligá-la faria o
-  // relatório por cliente deixar de fechar com o faturamento do período.
-  "sales",
   // 0345 — nome, telefone, endereço e `maps_url` do negócio raspado antes de
   // existir conversa. O passo alcança por vínculo OU POR TELEFONE (variantes do
   // nono dígito): quando o número já era de um contato conhecido, o candidato

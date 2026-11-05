@@ -106,12 +106,23 @@ class ReadQuery {
     }
     const order = this.ordering.length ? ` order by ${this.ordering.join(",")}` : "";
     const sql = `select ${projection} from ${ident(this.table)}${where}${order}${this.size === undefined ? "" : ` limit ${this.size}`} offset ${this.offset}`;
-    const result = await pool.query(
-      `with result as (${sql}) select to_jsonb(result) r from result`,
-      this.values,
-    );
-    const data = result.rows.map((row) => row.r);
-    return { data: this.one ? (data[0] ?? null) : data, error: null };
+    try {
+      const result = await pool.query(
+        `with result as (${sql}) select to_jsonb(result) r from result`,
+        this.values,
+      );
+      const data = result.rows.map((row) => row.r);
+      return { data: this.one ? (data[0] ?? null) : data, error: null };
+    } catch (err: unknown) {
+      const pgErr = err as { code?: string; message?: string };
+      return {
+        data: null,
+        error: {
+          message: pgErr.message ?? String(err),
+          code: pgErr.code ?? "UNKNOWN",
+        },
+      };
+    }
   }
 }
 

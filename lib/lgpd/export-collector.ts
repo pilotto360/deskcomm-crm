@@ -825,22 +825,41 @@ export async function collectExportData(args: CollectArgs): Promise<ExportPayloa
   // pegou este bloco antes de ele ser escrito.
   let sales: SaleRow[] = [];
   if (contactId) {
-    const { data, error } = await admin
-      .from("sales")
-      .select(
-        "id, number, status, total_cents, currency, notes, cancel_reason, reverse_reason, finalized_at, created_at",
-      )
-      .eq("organization_id", organizationId)
-      .eq("contact_id", contactId)
-      .order("created_at", { ascending: false })
-      .limit(500);
-    if (error) {
-      logger.warn("[lgpd-export-worker] sales load failed", {
-        request_id: requestId,
-        error: error.message,
-      });
-    } else if (data) {
-      sales = data;
+    try {
+      const { data, error } = await admin
+        .from("sales")
+        .select(
+          "id, number, status, total_cents, currency, notes, cancel_reason, reverse_reason, finalized_at, created_at",
+        )
+        .eq("organization_id", organizationId)
+        .eq("contact_id", contactId)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) {
+        const isMissingRelation =
+          error.code === "42P01" ||
+          error.code === "PGRST205" ||
+          /relation.*does not exist|not found in the schema cache/i.test(error.message);
+        if (!isMissingRelation) {
+          logger.warn("[lgpd-export-worker] sales load failed", {
+            request_id: requestId,
+            error: error.message,
+          });
+        }
+      } else if (data) {
+        sales = data;
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      const isMissingRelation =
+        (err as { code?: string })?.code === "42P01" ||
+        /relation.*does not exist|not found in the schema cache/i.test(message);
+      if (!isMissingRelation) {
+        logger.warn("[lgpd-export-worker] sales load failed", {
+          request_id: requestId,
+          error: message,
+        });
+      }
     }
   }
 

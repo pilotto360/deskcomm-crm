@@ -161,7 +161,7 @@ describe("transição real de atendimento", () => {
   it("CAS de close obsoleto não fecha nova revisão; escopo forjado é recusado", async () => {
     await expect(
       pool.query("select fn_service_status($1,$2,'closed',1)", [GOV_ORG, conversation]),
-    ).rejects.toMatchObject({ code: "40001" });
+    ).rejects.toMatchObject({ code: "PT409" });
     await expect(
       pool.query("select fn_service_status($1,$2,'closed',null)", [randomUUID(), conversation]),
     ).rejects.toMatchObject({ code: "P0002" });
