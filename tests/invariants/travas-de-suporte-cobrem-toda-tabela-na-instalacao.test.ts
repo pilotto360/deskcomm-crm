@@ -209,7 +209,7 @@ describe("travas do modo somente leitura do suporte — baseline aplicado UMA ve
 insert into auth.users(id,email) values('${ator}','support-trava@invariant.test');
 insert into auth.sessions(id,user_id,aal) values('${sessao}','${ator}','aal1');
 insert into organizations(id,slug,display_name,legal_name) values('${orgA}','trava-a','A','A'),('${orgB}','trava-b','B','B');
-insert into user_organizations(organization_id,user_id,role,accepted_at) values('${orgA}','${ator}','admin',now());
+insert into user_organizations(organization_id,user_id,role,accepted_at) values('${orgA}','${ator}','admin',now()),('${orgB}','${ator}','admin',now());
 insert into platform_admins(user_id,granted_by,scope,mfa_required,reason) values('${ator}','${ator}','full',false,'Local test');`;
 
     const entrar = (modo: "full" | "support_readonly") => `

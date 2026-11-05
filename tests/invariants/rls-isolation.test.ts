@@ -88,6 +88,7 @@ function seedOrg(org: string, user: string, sess: string, tag: string): string {
 }
 
 beforeAll(() => {
+  sql("select public.fn_financeiro_provisionar();");
   sql(seedOrg(ORG_A, USER_A, SESS_A, "a") + seedOrg(ORG_B, USER_B, SESS_B, "b"));
   // Contact → conversation → message + pipeline → stage → lead, per org.
   sql(`

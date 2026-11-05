@@ -41400,18 +41400,18 @@ create policy companies_select on public.companies
 drop policy if exists companies_insert on public.companies;
 create policy companies_insert on public.companies
   for insert with check (organization_id in (select public.fn_user_org_ids())
-                         and public.fn_role_at_least(organization_id, 'manager'));
+                         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists companies_update on public.companies;
 create policy companies_update on public.companies
   for update
   using (organization_id in (select public.fn_user_org_ids())
-         and public.fn_role_at_least(organization_id, 'agent'))
+         and (public.fn_role_at_least(organization_id, 'agent') or public.fn_is_platform_admin_full()))
   with check (organization_id in (select public.fn_user_org_ids())
-              and public.fn_role_at_least(organization_id, 'agent'));
+              and (public.fn_role_at_least(organization_id, 'agent') or public.fn_is_platform_admin_full()));
 drop policy if exists companies_delete on public.companies;
 create policy companies_delete on public.companies
   for delete using (organization_id in (select public.fn_user_org_ids())
-                    and public.fn_role_at_least(organization_id, 'manager'));
+                    and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 
 revoke all on table public.companies from anon;
 grant select, insert, update, delete on table public.companies to authenticated;
@@ -41453,18 +41453,18 @@ create policy people_select on public.people
 drop policy if exists people_insert on public.people;
 create policy people_insert on public.people
   for insert with check (organization_id in (select public.fn_user_org_ids())
-                         and public.fn_role_at_least(organization_id, 'manager'));
+                         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists people_update on public.people;
 create policy people_update on public.people
   for update
   using (organization_id in (select public.fn_user_org_ids())
-         and public.fn_role_at_least(organization_id, 'agent'))
+         and (public.fn_role_at_least(organization_id, 'agent') or public.fn_is_platform_admin_full()))
   with check (organization_id in (select public.fn_user_org_ids())
-              and public.fn_role_at_least(organization_id, 'agent'));
+              and (public.fn_role_at_least(organization_id, 'agent') or public.fn_is_platform_admin_full()));
 drop policy if exists people_delete on public.people;
 create policy people_delete on public.people
   for delete using (organization_id in (select public.fn_user_org_ids())
-                    and public.fn_role_at_least(organization_id, 'manager'));
+                    and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 
 revoke all on table public.people from anon;
 grant select, insert, update, delete on table public.people to authenticated;
@@ -41511,18 +41511,18 @@ create policy company_people_select on public.company_people
 drop policy if exists company_people_insert on public.company_people;
 create policy company_people_insert on public.company_people
   for insert with check (organization_id in (select public.fn_user_org_ids())
-                         and public.fn_role_at_least(organization_id, 'manager'));
+                         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists company_people_update on public.company_people;
 create policy company_people_update on public.company_people
   for update
   using (organization_id in (select public.fn_user_org_ids())
-         and public.fn_role_at_least(organization_id, 'agent'))
+         and (public.fn_role_at_least(organization_id, 'agent') or public.fn_is_platform_admin_full()))
   with check (organization_id in (select public.fn_user_org_ids())
-              and public.fn_role_at_least(organization_id, 'agent'));
+              and (public.fn_role_at_least(organization_id, 'agent') or public.fn_is_platform_admin_full()));
 drop policy if exists company_people_delete on public.company_people;
 create policy company_people_delete on public.company_people
   for delete using (organization_id in (select public.fn_user_org_ids())
-                    and public.fn_role_at_least(organization_id, 'manager'));
+                    and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 
 revoke all on table public.company_people from anon;
 grant select, insert, update, delete on table public.company_people to authenticated;
@@ -41647,18 +41647,18 @@ create policy import_batches_select on public.import_batches
 drop policy if exists import_batches_insert on public.import_batches;
 create policy import_batches_insert on public.import_batches
   for insert with check (organization_id in (select public.fn_user_org_ids())
-                         and public.fn_role_at_least(organization_id, 'manager'));
+                         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists import_batches_update on public.import_batches;
 create policy import_batches_update on public.import_batches
   for update
   using (organization_id in (select public.fn_user_org_ids())
-         and public.fn_role_at_least(organization_id, 'manager'))
+         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()))
   with check (organization_id in (select public.fn_user_org_ids())
-              and public.fn_role_at_least(organization_id, 'manager'));
+              and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists import_batches_delete on public.import_batches;
 create policy import_batches_delete on public.import_batches
   for delete using (organization_id in (select public.fn_user_org_ids())
-                    and public.fn_role_at_least(organization_id, 'manager'));
+                    and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 
 revoke all on table public.import_batches from anon;
 grant select, insert, update, delete on table public.import_batches to authenticated;
@@ -41701,18 +41701,18 @@ create policy import_rows_select on public.import_rows
 drop policy if exists import_rows_insert on public.import_rows;
 create policy import_rows_insert on public.import_rows
   for insert with check (organization_id in (select public.fn_user_org_ids())
-                         and public.fn_role_at_least(organization_id, 'manager'));
+                         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists import_rows_update on public.import_rows;
 create policy import_rows_update on public.import_rows
   for update
   using (organization_id in (select public.fn_user_org_ids())
-         and public.fn_role_at_least(organization_id, 'manager'))
+         and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()))
   with check (organization_id in (select public.fn_user_org_ids())
-              and public.fn_role_at_least(organization_id, 'manager'));
+              and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 drop policy if exists import_rows_delete on public.import_rows;
 create policy import_rows_delete on public.import_rows
   for delete using (organization_id in (select public.fn_user_org_ids())
-                    and public.fn_role_at_least(organization_id, 'manager'));
+                    and (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin_full()));
 
 revoke all on table public.import_rows from anon;
 grant select, insert, update, delete on table public.import_rows to authenticated;
