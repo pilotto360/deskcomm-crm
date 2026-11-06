@@ -58,7 +58,8 @@ export function StageColumn({
   useEffect(() => {
     if (!selectedLeadIds || selectedLeadIds.size === 0) return;
     for (let i = leads.length - 1; i >= limiteVisivel; i--) {
-      if (selectedLeadIds.has(leads[i].id)) {
+      const lead = leads[i];
+      if (lead && selectedLeadIds.has(lead.id)) {
         setLimiteVisivel(Math.min(leads.length, i + 10));
         break;
       }
