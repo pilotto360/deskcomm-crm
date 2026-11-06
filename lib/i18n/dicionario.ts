@@ -10424,6 +10424,10 @@ export const DICIONARIO: Traducoes = {
   "O WhatsApp recusou o envio do aviso.": { es: "WhatsApp rechazó el envío del aviso." },
   "O aviso não saiu e a causa não pôde ser identificada.":
     { es: "El aviso no salió y la causa no pudo ser identificada." },
+  "O número de destino pertence a uma conexão ativa desta organização.":
+    { es: "El número de destino pertenece a una conexión activa de esta organización." },
+  "A conexão de WhatsApp escolhida para os avisos está pausada.":
+    { es: "La conexión de WhatsApp elegida para los avisos está pausada." },
 
   // A porta de descoberta no fim do wizard (lib/onboarding/o-que-mais-existe.ts).
   // O guarda de espanhol NÃO resolve `t(p.comoChamar)` — tabela em outro

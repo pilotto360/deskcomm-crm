@@ -50,6 +50,8 @@ export const ERROS_DA_ENTREGA_DE_AVISO = [
   "expirou",
   "falha_no_envio",
   "indeterminado",
+  "destino_da_propria_organizacao",
+  "canal_desativado",
 ] as const;
 export type ErroDaEntregaDeAviso = (typeof ERROS_DA_ENTREGA_DE_AVISO)[number];
 
@@ -75,4 +77,8 @@ export const FRASE_DO_ERRO_DO_AVISO = {
   expirou: "O aviso ficou mais de 24 horas sem conseguir sair e foi encerrado.",
   falha_no_envio: "O WhatsApp recusou o envio do aviso.",
   indeterminado: "O aviso não saiu e a causa não pôde ser identificada.",
+  destino_da_propria_organizacao:
+    "O número de destino pertence a uma conexão ativa desta organização.",
+  canal_desativado:
+    "A conexão de WhatsApp escolhida para os avisos está pausada.",
 } as const satisfies Record<ErroDaEntregaDeAviso, string>;
