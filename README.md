@@ -280,6 +280,16 @@ Por baixo, cada evento vira uma linha em `event_log` — nenhum trigger de banco
 
 ## Features
 
+### Encaminhamento Departamental Inteligente (Integração IA WhatsApp)
+- **Descrição:** Painel de gestão e parametrização de transbordos inteligentes por departamento para o robô de WhatsApp (Associação Esperança e Vida). Permite configurar os números de telefone de plantão no formato internacional E.164 e atribuir operadores do CRM para os 8 setores oficiais, persistindo em `agent_config` com sincronização em tempo real e notificações in-app para os operadores.
+- **Fluxo:**
+  1. No menu lateral, acesse **Configurações > Departamentos & IA** (`/app/settings/departamentos`).
+  2. O sistema exibe os 8 departamentos oficiais da instituição (Serviço Social, Vendas Corporativas, Palestras Robertinho, RH Empregos, Coordenação de Voluntariado, Doações e Bazar, Financeiro e Secretaria Geral).
+  3. Para cada setor, o gestor escolhe o operador do CRM responsável (dropdown populado com os atendentes da organização) e define o WhatsApp E.164 de notificação direta.
+  4. Ao clicar em **Salvar Alterações**, os parâmetros são validados via Zod e persistidos via upsert atômico na tabela `agent_config` (`dept_user_<codigo>` e `dept_phone_<codigo>`).
+  5. O robô de IA consulta o `agent_config` (com cache de 60s) e, ao identificar a intenção do cliente, envia um alerta direto no WhatsApp do plantonista e atualiza a conversa no CRM (`status = 'pending'`, `assignee_kind = 'user'`, `assigned_to_user_id = <id>` e `last_handoff_reason = 'referral_<codigo>'`).
+  6. A conversa entra imediatamente na aba "Minhas" do operador e dispara um toast in-app em tempo real notificando o encaminhamento para o setor correspondente, com o card de briefing no chat.
+
 ### Conexão WhatsApp via Provedor Parceiro (Omnique)
 - **Descrição:** Integração nativa com a API oficial do WhatsApp (Cloud API) via provedor parceiro Omnique, permitindo conectar o número oficial com a Chave de API (`zpk_...`), Phone Number ID dedicado (opcional se houver 1 número) e URL base customizada (com fallback para `https://auth.omnique.com.br/functions/v1`).
 - **Fluxo:**

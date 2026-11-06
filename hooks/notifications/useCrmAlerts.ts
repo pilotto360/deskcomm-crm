@@ -6,6 +6,7 @@ import { useActiveOrg, useUser } from "@/hooks/auth/AuthProvider";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
 import { entregarAviso } from "@/lib/notifications/deliver";
 import { mencaoAtingeUsuario } from "@/lib/notifications/mentions";
+import { OFFICIAL_DEPARTMENTS } from "@/lib/settings/departments";
 
 function str(v: unknown): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
@@ -107,6 +108,43 @@ export function useCrmAlerts(): void {
     [user.id, user.email, user.full_name],
   );
 
+  const onConversation = useCallback(
+    (payload: unknown) => {
+      const { novo, antigo } = sides(payload);
+      if (!novo) return;
+      const assignedTo = str(novo.assigned_to_user_id);
+      const assignedAntes = str(antigo?.assigned_to_user_id);
+      const conversationId = str(novo.id);
+      const reason = str(novo.last_handoff_reason) ?? "";
+
+      if (assignedTo && assignedTo === user.id && assignedTo !== assignedAntes) {
+        if (reason.startsWith("referral_")) {
+          const deptCode = reason.replace("referral_", "");
+          const dept = OFFICIAL_DEPARTMENTS.find((d) => d.code === deptCode);
+          const deptName = dept ? dept.name : deptCode;
+          entregarAviso({
+            category: "lead_assigned",
+            kind: "lead_assigned",
+            title: "Encaminhamento Departamental",
+            body: `Conversa direcionada para seu setor: ${deptName}`,
+            tag: conversationId ?? undefined,
+            href: conversationId ? `/app/inbox?id=${conversationId}` : "/app/inbox",
+          });
+        } else {
+          entregarAviso({
+            category: "lead_assigned",
+            kind: "lead_assigned",
+            title: "Conversa atribuída a você",
+            body: str(novo.last_message_preview) || "Uma conversa foi atribuída a você",
+            tag: conversationId ?? undefined,
+            href: conversationId ? `/app/inbox?id=${conversationId}` : "/app/inbox",
+          });
+        }
+      }
+    },
+    [user.id],
+  );
+
   useRealtimeChannel({
     name: orgId ? `alerts-leads-${orgId}` : "alerts-leads-disabled",
     postgresChanges: orgId
@@ -118,6 +156,20 @@ export function useCrmAlerts(): void {
         }
       : undefined,
     onChange: onLead,
+    enabled: !!orgId,
+  });
+
+  useRealtimeChannel({
+    name: orgId ? `alerts-conversations-${orgId}` : "alerts-conversations-disabled",
+    postgresChanges: orgId
+      ? {
+          event: "UPDATE",
+          schema: "public",
+          table: "conversations",
+          filter: `organization_id=eq.${orgId}`,
+        }
+      : undefined,
+    onChange: onConversation,
     enabled: !!orgId,
   });
 

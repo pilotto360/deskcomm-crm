@@ -735,6 +735,15 @@ export const NAV_CATALOG = [
     minRole: "manager",
   },
   {
+    href: "/app/settings/departamentos",
+    label: "Departamentos & IA",
+    description: "Encaminhamentos departamentais inteligentes e telefones de plantão.",
+    icon: "Buildings",
+    group: "organizacao",
+    section: "Sua empresa",
+    minRole: "manager",
+  },
+  {
     // A porta que faltava para o vocabulário de etiquetas (issue #852). Até
     // aqui a etiqueta só ENTRAva no vocabulário — cada agente escrevia a que
     // quisesse em `add_tag` — e não havia por onde corrigir, juntar as duas
